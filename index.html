@@ -111,7 +111,7 @@ function App(){
   const getLastOrder=useCallback((itemId,l)=>data.orders.filter(o=>o.item_id===itemId&&o.location===l).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]||null,[data.orders]);
 
   const h={
-    logOrder(order){setData(p=>({...p,orders:[...p.orders,{...order,id:(p.orders.length>0?Math.max(...p.orders.map(o=>o.id)):0)+1,status:"ordered",received_date:null}]}));showToast("Order logged");setModal(null)},
+    logOrder(orderOrders){const arr=Array.isArray(orderOrders)?orderOrders:[orderOrders];setData(p=>{let nextId=(p.orders.length>0?Math.max(...p.orders.map(o=>o.id)):0)+1;const newOrders=arr.map(order=>({...order,id:nextId++,status:"ordered",received_date:null}));return{...p,orders:[...p.orders,...newOrders]}});showToast(`${arr.length} item${arr.length>1?"s":""} logged`);setModal(null)},
     updateOrder(id,u){setData(p=>({...p,orders:p.orders.map(o=>o.id===id?{...o,...u}:o)}));showToast("Order updated")},
     deleteOrder(id){setData(p=>({...p,orders:p.orders.filter(o=>o.id!==id)}));showToast("Order deleted")},
     markReceived(id,rcvDate){setData(p=>{const idx=p.orders.findIndex(o=>o.id===id);if(idx<0)return p;const order=p.orders[idx];const no=[...p.orders];no[idx]={...order,status:"received",received_date:rcvDate||new Date().toISOString().slice(0,10)};return{...p,orders:no}});showToast("Received")},
@@ -149,8 +149,8 @@ function App(){
       </header>
       <main style={{flex:1,overflow:"auto",padding:24}}>
         {page==="dashboard"&&<Dashboard inv={inv} alerts={alerts} orders={fOrders} setModal={setModal} data={data}/>}
-        {page==="clinical"&&<SupplyTable inv={inv.filter(i=>i.type==="clinical")} type="clinical" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
-        {page==="office"&&<SupplyTable inv={inv.filter(i=>i.type==="office")} type="office" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
+        {page==="clinical"&&<SupplyTable inv={inv.filter(i=>i.type==="clinical")} type="clinical" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors} data={data}/>}
+        {page==="office"&&<SupplyTable inv={inv.filter(i=>i.type==="office")} type="office" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors} data={data}/>}
         {page==="orders"&&<OrderHistory orders={fOrders} setModal={setModal} h={h} data={data}/>}
         {page==="analytics"&&<ReorderPlanner inv={inv} data={data} loc={loc}/>}
         {page==="spending"&&<Spending orders={fOrders}/>}
@@ -243,11 +243,12 @@ function Dashboard({inv,alerts,orders,setModal,data}){
   </div>);
 }
 
-function SupplyTable({inv,type,setModal,h,getLastOrder,vendors}){
-  const[search,setSearch]=useState("");const[catF,setCatF]=useState("All");const[statusF,setStatusF]=useState("All");const[editId,setEditId]=useState(null);const[editRow,setEditRow]=useState({});const[confirmDel,setConfirmDel]=useState(null);
+function SupplyTable({inv,type,setModal,h,getLastOrder,vendors,data}){
+  const[search,setSearch]=useState("");const[catF,setCatF]=useState("All");const[statusF,setStatusF]=useState("All");const[editId,setEditId]=useState(null);const[editRow,setEditRow]=useState({});const[confirmDel,setConfirmDel]=useState(null);const[expandedId,setExpandedId]=useState(null);
   const cats=[...new Set(inv.map(i=>i.category))].sort();
   const filtered=inv.filter(i=>{if(search&&!i.name.toLowerCase().includes(search.toLowerCase())&&!i.category.toLowerCase().includes(search.toLowerCase()))return false;if(catF!=="All"&&i.category!==catF)return false;if(statusF!=="All"&&i.orderStatus!==statusF)return false;return true});
   const tl=type==="clinical"?"Clinical":"Office";
+  const colCount=10;
   return(<div>
     <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{flex:1,minWidth:200,position:"relative"}}><Ic name="search" size={16} style={{position:"absolute",left:12,top:10}} color={C.textMuted}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{width:"100%",padding:"8px 12px 8px 36px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13,outline:"none"}}/></div>
@@ -260,25 +261,90 @@ function SupplyTable({inv,type,setModal,h,getLastOrder,vendors}){
       <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
         <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["Item Info","Category","Location","Unit","Usage","Est. Stock","Last Price","Next Order","Status","Actions"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 12px",fontWeight:600,color:C.textMuted,fontSize:11,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
         <tbody>{filtered.map(item=>{
-          const key=`${item.id}-${item.location}`;const isEd=editId===key;
+          const key=`${item.id}-${item.location}`;const isEd=editId===key;const isExp=expandedId===key;
           const lo=getLastOrder(item.id,item.location);const vn=lo?vendors.find(v=>v.id===lo.vendor_id)?.name:null;const da=lo?daysAgo(lo.ordered_date):null;
           const lastUnitPrice=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
           const moUsage=item.dailyUsage?+(item.dailyUsage*30).toFixed(1):null;
           const estMonthsLeft=moUsage&&item.estStock?+(item.estStock/moUsage).toFixed(1):null;
-          return(<tr key={key} style={{borderBottom:`1px solid ${C.border}`,background:isEd?"#F0FDFA":"transparent"}} onMouseEnter={e=>{if(!isEd)e.currentTarget.style.background="#F8FAFC"}} onMouseLeave={e=>{if(!isEd)e.currentTarget.style.background="transparent"}}>
-            <td style={{padding:"10px 12px"}}>{isEd?<input value={editRow.name} onChange={e=>setEditRow({...editRow,name:e.target.value})} style={{...inpSm,width:200}}/>:<div style={{fontWeight:500}}>{item.name}</div>}{!isEd&&lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:3,lineHeight:1.5}}>
-              <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}><Ic name="calclock" size={10} color={C.textMuted}/>Last: {lo.ordered_date} ({fmtDur(da)} ago) · {lo.quantity} {item.unit} · ${lo.total_cost.toFixed(2)}{vn&&<span> · {vn}</span>}</div>
-            </div>}{!isEd&&!lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:2,fontStyle:"italic"}}>No orders yet</div>}</td>
-            <td style={{padding:"10px 12px",color:C.textMuted}}>{isEd?(()=>{const ec=item.type==="clinical"?["Brackets & Bonding","Wires & Elastics","Burs & Finishing","Disposables & Patient Care","Equipment"]:["Cleaning & Sterilization","Patient Amenities"];const allC=ec.includes(editRow.category)?ec:[editRow.category,...ec];return<select value={editRow.category} onChange={e=>setEditRow({...editRow,category:e.target.value})} style={{...inpSm,width:140}}>{allC.map(c=><option key={c} value={c}>{c}</option>)}</select>})():item.category}</td>
-            <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{item.location}</td>
-            <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{isEd?<input value={editRow.unit} onChange={e=>setEditRow({...editRow,unit:e.target.value})} style={{...inpSm,width:80}}/>:item.unit}</td>
-            <td style={{padding:"10px 12px"}}>{moUsage?<div><div style={{fontWeight:600,color:C.accent}}>~{moUsage<1?item.dailyUsage+"/day":Math.round(moUsage)+"/mo"}</div><div style={{fontSize:10,color:C.textMuted}}>last order lasted {fmtDur(Math.round((lo?.quantity||0)/(item.dailyUsage||1)))}</div></div>:<span style={{color:C.textMuted,fontSize:11}}>Need 2+ orders</span>}</td>
-            <td style={{padding:"10px 12px"}}>{item.estStock!==null?<div><div style={{fontWeight:600,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.text}}>~{item.estStock} {item.unit}</div>{estMonthsLeft!==null&&<div style={{fontSize:10,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.success}}>~{fmtDur(Math.round(estMonthsLeft*30))} left</div>}</div>:<span style={{color:C.textMuted}}>—</span>}</td>
-            <td style={{padding:"10px 12px",color:lastUnitPrice?C.text:C.textMuted}}>{lastUnitPrice?`$${lastUnitPrice}`:"—"}</td>
-            <td style={{padding:"10px 12px",fontSize:12}}>{item.nextOrder?<span style={{color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.textMuted}}>{item.nextOrder}</span>:<span style={{color:C.textMuted}}>—</span>}</td>
-            <td style={{padding:"10px 12px"}}><Badge status={item.orderStatus}/></td>
-            <td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>{isEd?<><button onClick={()=>{h.updateItem(item.id,{name:editRow.name,category:editRow.category,unit:editRow.unit});setEditId(null)}} style={btnSm(C.success,"#fff")}><Ic name="save" size={12} color="#fff"/></button><button onClick={()=>setEditId(null)} style={btnSm("#E2E5EB",C.text)}><Ic name="x" size={12}/></button></>:<><button onClick={()=>{setEditId(key);setEditRow({name:item.name,category:item.category,unit:item.unit})}} style={btnSm(C.blueBg,C.blue)}><Ic name="pencil" size={12} color={C.blue}/></button>{confirmDel===key?<div style={{display:"flex",gap:2}}><button onClick={()=>{h.deleteItem(item.id);setConfirmDel(null)}} style={btnSm(C.danger,"#fff")}>Yes</button><button onClick={()=>setConfirmDel(null)} style={btnSm("#E2E5EB",C.text)}>No</button></div>:<button onClick={()=>setConfirmDel(key)} style={btnSm(C.dangerBg,C.danger)}><Ic name="trash" size={12} color={C.danger}/></button>}</>}</div></td>
-          </tr>)})}</tbody>
+          // All orders for expanded view
+          const itemOrders=isExp?data.orders.filter(o=>o.item_id===item.id&&o.location===item.location).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date)):[];
+          const totalQty=itemOrders.reduce((s,o)=>s+o.quantity,0);
+          const totalSpent=itemOrders.reduce((s,o)=>s+o.total_cost,0);
+          const rcvOrders=itemOrders.filter(o=>o.status==="received");
+          const avgUP=rcvOrders.length>0?+(rcvOrders.reduce((s,o)=>s+(o.subtotal||0),0)/rcvOrders.reduce((s,o)=>s+o.quantity,0)).toFixed(2):null;
+          const minUP=rcvOrders.length>0?Math.min(...rcvOrders.map(o=>o.quantity>0?+(o.subtotal/o.quantity).toFixed(2):999)):null;
+          const maxUP=rcvOrders.length>0?Math.max(...rcvOrders.map(o=>o.quantity>0?+(o.subtotal/o.quantity).toFixed(2):0)):null;
+
+          return(<React.Fragment key={key}>
+            <tr style={{borderBottom:isExp?"none":`1px solid ${C.border}`,background:isEd?"#F0FDFA":isExp?"#F8FAFC":"transparent"}} onMouseEnter={e=>{if(!isEd&&!isExp)e.currentTarget.style.background="#F8FAFC"}} onMouseLeave={e=>{if(!isEd&&!isExp)e.currentTarget.style.background="transparent"}}>
+              <td style={{padding:"10px 12px"}}>
+                {isEd?<div><input value={editRow.name} onChange={e=>setEditRow({...editRow,name:e.target.value})} style={{...inpSm,width:"100%",marginBottom:4}}/><input value={editRow.notes||""} onChange={e=>setEditRow({...editRow,notes:e.target.value})} placeholder="Item notes..." style={{...inpSm,width:"100%",fontSize:10}}/></div>:<div onClick={()=>setExpandedId(isExp?null:key)} style={{cursor:"pointer"}}><div style={{fontWeight:500,color:C.accent,display:"flex",alignItems:"center",gap:4}}><span style={{transform:isExp?"rotate(90deg)":"rotate(0)",transition:"transform .15s",fontSize:10}}>▶</span>{item.name}</div>{item.notes&&<div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{item.notes}</div>}</div>}
+                {!isEd&&lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:3,lineHeight:1.5}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}><Ic name="calclock" size={10} color={C.textMuted}/>Last: {lo.ordered_date} ({fmtDur(da)} ago) · {lo.quantity} {item.unit} · ${lo.total_cost.toFixed(2)}{vn&&<span> · {vn}</span>}</div>
+                </div>}{!isEd&&!lo&&!item.notes&&<div style={{fontSize:10,color:C.textMuted,marginTop:2,fontStyle:"italic"}}>No orders yet</div>}
+              </td>
+              <td style={{padding:"10px 12px",color:C.textMuted}}>{isEd?(()=>{const ec=item.type==="clinical"?["Brackets & Bonding","Wires & Elastics","Burs & Finishing","Disposables & Patient Care","Equipment"]:["Cleaning & Sterilization","Patient Amenities"];const allC=ec.includes(editRow.category)?ec:[editRow.category,...ec];return<select value={editRow.category} onChange={e=>setEditRow({...editRow,category:e.target.value})} style={{...inpSm,width:140}}>{allC.map(c=><option key={c} value={c}>{c}</option>)}</select>})():item.category}</td>
+              <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{item.location}</td>
+              <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{isEd?<input value={editRow.unit} onChange={e=>setEditRow({...editRow,unit:e.target.value})} style={{...inpSm,width:80}}/>:item.unit}</td>
+              <td style={{padding:"10px 12px"}}>{moUsage?<div><div style={{fontWeight:600,color:C.accent}}>~{moUsage<1?item.dailyUsage+"/day":Math.round(moUsage)+"/mo"}</div><div style={{fontSize:10,color:C.textMuted}}>last order lasted {fmtDur(Math.round((lo?.quantity||0)/(item.dailyUsage||1)))}</div></div>:<span style={{color:C.textMuted,fontSize:11}}>Need 2+ orders</span>}</td>
+              <td style={{padding:"10px 12px"}}>{item.estStock!==null?<div><div style={{fontWeight:600,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.text}}>~{item.estStock} {item.unit}</div>{estMonthsLeft!==null&&<div style={{fontSize:10,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.success}}>~{fmtDur(Math.round(estMonthsLeft*30))} left</div>}</div>:<span style={{color:C.textMuted}}>—</span>}</td>
+              <td style={{padding:"10px 12px",color:lastUnitPrice?C.text:C.textMuted}}>{lastUnitPrice?`$${lastUnitPrice}`:"—"}</td>
+              <td style={{padding:"10px 12px",fontSize:12}}>{item.nextOrder?<span style={{color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.textMuted}}>{item.nextOrder}</span>:<span style={{color:C.textMuted}}>—</span>}</td>
+              <td style={{padding:"10px 12px"}}><Badge status={item.orderStatus}/></td>
+              <td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>{isEd?<><button onClick={()=>{h.updateItem(item.id,{name:editRow.name,category:editRow.category,unit:editRow.unit,notes:editRow.notes});setEditId(null)}} style={btnSm(C.success,"#fff")}><Ic name="save" size={12} color="#fff"/></button><button onClick={()=>setEditId(null)} style={btnSm("#E2E5EB",C.text)}><Ic name="x" size={12}/></button></>:<><button onClick={()=>{setEditId(key);setEditRow({name:item.name,category:item.category,unit:item.unit,notes:item.notes||""})}} style={btnSm(C.blueBg,C.blue)}><Ic name="pencil" size={12} color={C.blue}/></button>{confirmDel===key?<div style={{display:"flex",gap:2}}><button onClick={()=>{h.deleteItem(item.id);setConfirmDel(null)}} style={btnSm(C.danger,"#fff")}>Yes</button><button onClick={()=>setConfirmDel(null)} style={btnSm("#E2E5EB",C.text)}>No</button></div>:<button onClick={()=>setConfirmDel(key)} style={btnSm(C.dangerBg,C.danger)}><Ic name="trash" size={12} color={C.danger}/></button>}</>}</div></td>
+            </tr>
+            {/* ─── Expanded History Panel ─── */}
+            {isExp&&<tr><td colSpan={colCount} style={{padding:0,background:"#F8FAFC",borderBottom:`2px solid ${C.accent}`}}>
+              <div style={{padding:"16px 20px"}}>
+                {/* Summary row */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12,marginBottom:16}}>
+                  <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.textMuted,fontWeight:600}}>TOTAL ORDERED</div>
+                    <div style={{fontSize:18,fontWeight:700}}>{totalQty} <span style={{fontSize:11,fontWeight:400,color:C.textMuted}}>{item.unit}</span></div>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.textMuted,fontWeight:600}}>TOTAL SPENT</div>
+                    <div style={{fontSize:18,fontWeight:700,color:C.accent}}>${totalSpent.toFixed(2)}</div>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.textMuted,fontWeight:600}}>AVG PRICE</div>
+                    <div style={{fontSize:18,fontWeight:700}}>{avgUP?`$${avgUP}`:"—"}<span style={{fontSize:11,fontWeight:400,color:C.textMuted}}>/{item.unit}</span></div>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.textMuted,fontWeight:600}}>PRICE RANGE</div>
+                    <div style={{fontSize:14,fontWeight:700}}>{minUP!==null?`$${minUP} – $${maxUP}`:"—"}</div>
+                  </div>
+                  <div style={{background:"#fff",borderRadius:8,padding:"10px 14px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.textMuted,fontWeight:600}}>USAGE RATE</div>
+                    <div style={{fontSize:18,fontWeight:700,color:C.accent}}>{moUsage?`~${Math.round(moUsage)}/mo`:"—"}</div>
+                  </div>
+                </div>
+                {/* Order timeline */}
+                <div style={{fontSize:12,fontWeight:700,color:C.textMuted,marginBottom:8}}>ORDER HISTORY ({itemOrders.length})</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,background:"#fff",borderRadius:8,overflow:"hidden"}}>
+                  <thead><tr style={{borderBottom:`2px solid ${C.border}`,background:"#F1F5F9"}}>{["Date","Qty","Unit Price","Subtotal","Tax","Ship","Disc","Total","Vendor","Status","Notes"].map(t=>(<th key={t} style={{textAlign:"left",padding:"8px 10px",fontWeight:600,color:C.textMuted,fontSize:10,textTransform:"uppercase"}}>{t}</th>))}</tr></thead>
+                  <tbody>{itemOrders.map(o=>{
+                    const oVn=vendors.find(v=>v.id===o.vendor_id)?.name||"—";
+                    const oUP=o.quantity>0&&o.subtotal?+(o.subtotal/o.quantity).toFixed(2):null;
+                    return(<tr key={o.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"8px 10px"}}>{o.ordered_date}{o.received_date&&<div style={{fontSize:10,color:C.success}}>Rcv: {o.received_date}</div>}</td>
+                      <td style={{padding:"8px 10px",fontWeight:600}}>{o.quantity} <span style={{fontWeight:400,color:C.textMuted}}>{item.unit}</span></td>
+                      <td style={{padding:"8px 10px"}}>{oUP?`$${oUP}`:"—"}</td>
+                      <td style={{padding:"8px 10px"}}>${(o.subtotal||0).toFixed(2)}</td>
+                      <td style={{padding:"8px 10px",color:C.textMuted}}>${(o.tax||0).toFixed(2)}</td>
+                      <td style={{padding:"8px 10px",color:C.textMuted}}>${(o.shipping||0).toFixed(2)}</td>
+                      <td style={{padding:"8px 10px"}}>{o.discount>0?<span style={{color:C.success}}>-${o.discount.toFixed(2)}</span>:"—"}</td>
+                      <td style={{padding:"8px 10px",fontWeight:700}}>${o.total_cost.toFixed(2)}</td>
+                      <td style={{padding:"8px 10px",color:C.textMuted}}>{oVn}</td>
+                      <td style={{padding:"8px 10px"}}><Badge status={o.status}/></td>
+                      <td style={{padding:"8px 10px",color:C.textMuted,fontSize:11,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis"}}>{o.notes||"—"}</td>
+                    </tr>)})}</tbody>
+                </table>
+                <div style={{marginTop:12,textAlign:"right"}}><button onClick={()=>setExpandedId(null)} style={{padding:"6px 16px",borderRadius:6,border:`1px solid ${C.border}`,background:"#fff",fontSize:12,cursor:"pointer",color:C.textMuted}}>Close</button></div>
+              </div>
+            </td></tr>}
+          </React.Fragment>);
+        })}</tbody>
       </table>{filtered.length===0&&<div style={{padding:40,textAlign:"center",color:C.textMuted}}>No items match</div>}</div>)}
   </div>);
 }
@@ -458,8 +524,8 @@ function SettingsPage({eCSV,eJSON,iJSON,clearAll,data,h}){
 
 function Modal({modal,setModal,data,loc,h}){
   const[form,setForm]=useState(()=>{
-    if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:"",ordered_date:new Date().toISOString().slice(0,10),unit_price:"",subtotal_input:"",price_mode:""};
-    if(modal.type==="addItem")return{name:"",category:"",unit:"",itemLoc:loc==="All"?"Both":loc};
+    if(modal.type==="logOrder")return{lines:[{id:1,item_id:"",quantity:1,unit_price:"",subtotal_input:"",price_mode:""}],location:loc==="All"?"Suwanee":loc,ordered_date:new Date().toISOString().slice(0,10),vendor_id:"",newVendor:"",tax:0,shipping:0,discount:0,notes:""};
+    if(modal.type==="addItem")return{name:"",category:"",unit:"",itemLoc:loc==="All"?"Both":loc,notes:""};
     return{};
   });
   const[showNewV,setShowNewV]=useState(false);
@@ -470,108 +536,109 @@ function Modal({modal,setModal,data,loc,h}){
     return<MW t={`Add ${modal.itemType==="clinical"?"Clinical":"Office"} Item`} onClose={()=>setModal(null)}>
       <label style={lbl}>Item Name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{...inp,marginBottom:12}} placeholder="e.g. Bracket Removal Plier"/>
       <label style={lbl}>Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{...inp,marginBottom:12}}><option value="">Select...</option>{cats.map(c=><option key={c}>{c}</option>)}</select>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <div><label style={lbl}>Unit</label><input value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})} style={inp} placeholder="e.g. pack/10, syringe"/></div>
         <div><label style={lbl}>Location</label><select value={form.itemLoc} onChange={e=>setForm({...form,itemLoc:e.target.value})} style={inp}><option value="Both">Both Locations</option><option value="Suwanee">Suwanee Only</option><option value="Tucker">Tucker Only</option></select></div>
       </div>
-      <button disabled={!form.name||!form.category||!form.unit} onClick={()=>h.addItem({name:form.name,category:form.category,type:modal.itemType,unit:form.unit,cost_per_unit:0},form.itemLoc)} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.name&&form.category&&form.unit)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.name&&form.category&&form.unit)?"pointer":"not-allowed"}}>Add Item</button>
+      <div style={{marginBottom:16}}><label style={lbl}>Notes (optional)</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={inp} placeholder="Item#, brand, specs..."/></div>
+      <button disabled={!form.name||!form.category||!form.unit} onClick={()=>h.addItem({name:form.name,category:form.category,type:modal.itemType,unit:form.unit,cost_per_unit:0,notes:form.notes},form.itemLoc)} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.name&&form.category&&form.unit)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.name&&form.category&&form.unit)?"pointer":"not-allowed"}}>Add Item</button>
     </MW>}
 
   if(modal.type==="markReceived")return<MW t="Mark Received" onClose={()=>setModal(null)}>{pending.length===0?<div style={{textAlign:"center",padding:20,color:C.textMuted}}>No pending orders</div>:<div style={{maxHeight:400,overflow:"auto"}}>{pending.map(o=>(<ReceiveRow key={o.id} o={o} h={h} setModal={setModal}/>))}</div>}</MW>;
 
   if(modal.type==="markReceivedOne"){const o=modal.order;return<MW t="Mark as Received" onClose={()=>setModal(null)}><ReceiveRow o={o} h={h} setModal={setModal} expanded/></MW>}
 
-  const sel=data.items.find(i=>i.id===+form.item_id);
-  const effectiveUP=form.price_mode==="subtotal"&&form.quantity>0?+(+form.subtotal_input/form.quantity).toFixed(2):(+form.unit_price||0);
-  const sub=form.price_mode==="subtotal"?(+form.subtotal_input||0):sel?+(form.quantity*effectiveUP).toFixed(2):0;
-  const tot=+(+sub+(+form.tax||0)+(+form.shipping||0)-(+form.discount||0)).toFixed(2);
-  const allItemOrders=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date)):[];
-  const lo=allItemOrders[0]||null;
-  const lv=lo?data.vendors.find(v=>v.id===lo.vendor_id)?.name:null;
-  const lastUP=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
+  // ─── Multi-item Log Order ───
+  const updateLine=(idx,field,val)=>{setForm(f=>{const nl=[...f.lines];nl[idx]={...nl[idx],[field]:val};return{...f,lines:nl}})};
+  const addLine=()=>{setForm(f=>({...f,lines:[...f.lines,{id:Date.now(),item_id:"",quantity:1,unit_price:"",subtotal_input:"",price_mode:""}]}))};
+  const removeLine=(idx)=>{setForm(f=>({...f,lines:f.lines.filter((_,i)=>i!==idx)}))};
 
-  // Usage calculation
-  let monthlyUsage=null,lastDurationMo=null,newDurationMo=null;
-  if(lo){
-    const daysSince=daysAgo(lo.received_date||lo.ordered_date);
-    const moSince=+(daysSince/30).toFixed(1);
-    if(moSince>0&&lo.quantity>0){
-      monthlyUsage=+(lo.quantity/moSince).toFixed(1);
-      lastDurationMo=moSince;
-      if(form.quantity>0&&monthlyUsage>0) newDurationMo=+(form.quantity/monthlyUsage).toFixed(1);
-    }
-  }
-  // Price comparison
-  const priceDiff=lastUP&&effectiveUP>0?+(effectiveUP-lastUP).toFixed(2):null;
-  const pricePct=lastUP&&effectiveUP>0?+(((effectiveUP-lastUP)/lastUP)*100).toFixed(1):null;
+  // Calculate line subtotals
+  const lineCalcs=form.lines.map(ln=>{
+    const sel=data.items.find(i=>i.id===+ln.item_id);
+    const eUP=ln.price_mode==="subtotal"&&ln.quantity>0?+(+ln.subtotal_input/ln.quantity).toFixed(2):(+ln.unit_price||0);
+    const sub=ln.price_mode==="subtotal"?(+ln.subtotal_input||0):sel?+(ln.quantity*eUP).toFixed(2):0;
+    const lo=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;
+    const lastUP=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
+    const lv=lo?data.vendors.find(v=>v.id===lo.vendor_id)?.name:null;
+    let moUsage=null,newDur=null;
+    if(lo){const ds=daysAgo(lo.received_date||lo.ordered_date);const ms=+(ds/30).toFixed(1);if(ms>0&&lo.quantity>0){moUsage=+(lo.quantity/ms).toFixed(1);if(ln.quantity>0&&moUsage>0)newDur=+(ln.quantity/moUsage).toFixed(1)}}
+    return{sel,eUP,sub:+sub,lo,lastUP,lv,moUsage,newDur};
+  });
+  const itemsSubtotal=lineCalcs.reduce((s,c)=>s+c.sub,0);
+  const grandTotal=+(itemsSubtotal+(+form.tax||0)+(+form.shipping||0)-(+form.discount||0)).toFixed(2);
+  const validLines=form.lines.filter((ln,i)=>ln.item_id&&lineCalcs[i].sub>0);
 
   return<MW t="Log New Order" onClose={()=>setModal(null)}>
     {data.items.length===0?<div style={{textAlign:"center",padding:20,color:C.textMuted}}>Add items in Clinical or Office Supplies first.</div>:<>
-      <label style={lbl}>Item</label>
-      <select value={form.item_id} onChange={e=>{const newId=e.target.value;const newSel=data.items.find(i=>i.id===+newId);const newLo=newSel?data.orders.filter(o=>o.item_id===newSel.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP=newLo&&newLo.quantity>0?+(newLo.subtotal/newLo.quantity).toFixed(2):"";const newSub=newUP&&form.quantity?+(form.quantity*newUP).toFixed(2):"";setForm({...form,item_id:newId,unit_price:newUP,subtotal_input:newSub,price_mode:newUP?"unit":""})}} style={{...inp,marginBottom:8}}><option value="">Select...</option>{[...data.items].sort((a,b)=>a.name.localeCompare(b.name)).map(i=>(<option key={i.id} value={i.id}>{i.name} ({i.category})</option>))}</select>
 
-      {/* ─── Smart Order Context Panel ─── */}
-      {lo&&<div style={{border:`1px solid ${C.border}`,borderRadius:10,marginBottom:14,overflow:"hidden"}}>
-        {/* Last Order */}
-        <div style={{padding:"10px 14px",background:"#FFF7ED",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#92400E",marginBottom:6}}>LAST ORDER ({lo.ordered_date}){lv&&` · ${lv}`}</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,fontSize:12}}>
-            <div><span style={{color:C.textMuted}}>Qty:</span> <strong>{lo.quantity}</strong> {sel.unit}</div>
-            <div><span style={{color:C.textMuted}}>Total:</span> <strong>${lo.total_cost.toFixed(2)}</strong></div>
-            <div><span style={{color:C.textMuted}}>Per {sel.unit}:</span> <strong>${lastUP}</strong></div>
-          </div>
-        </div>
-        {/* Usage */}
-        {monthlyUsage&&<div style={{padding:"10px 14px",background:"#EFF6FF",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.blue,marginBottom:6}}>USAGE</div>
-          <div style={{fontSize:12,lineHeight:1.6}}>
-            <div>{lo.quantity} {sel.unit} in {fmtDur(Math.round(lastDurationMo*30))} ({lo.ordered_date} → now)</div>
-            <div><strong>~{monthlyUsage} {sel.unit}/month</strong></div>
-          </div>
-        </div>}
-        {/* This Order Projection */}
-        {newDurationMo&&+sub>0&&<div style={{padding:"10px 14px",background:C.accentLight}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.accentDark,marginBottom:6}}>THIS ORDER → PROJECTION</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,fontSize:12}}>
-            <div><span style={{color:C.textMuted}}>Qty:</span> <strong>{form.quantity}</strong> {sel.unit}</div>
-            <div><span style={{color:C.textMuted}}>Per {sel.unit}:</span> <strong>${effectiveUP>0?effectiveUP.toFixed?effectiveUP.toFixed(2):effectiveUP:"—"}</strong>
-              {priceDiff!==null&&priceDiff!==0&&<span style={{fontSize:10,marginLeft:4,color:priceDiff<0?C.success:C.danger}}>({priceDiff>0?"+":""}${priceDiff} / {pricePct>0?"+":""}{pricePct}%)</span>}
-            </div>
-            <div><span style={{color:C.textMuted}}>Will last:</span> <strong style={{color:C.accent}}>~{fmtDur(Math.round(newDurationMo*30))}</strong></div>
-          </div>
-        </div>}
-      </div>}
-      {sel&&!lo&&<div style={{fontSize:11,color:C.textMuted,marginBottom:12,fontStyle:"italic"}}>No previous orders at {form.location} — usage data will appear after your first received order.</div>}
-      {!sel&&<div style={{marginBottom:8}}/>}
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8}}>
-        <div><label style={lbl}>Qty {sel&&<span style={{fontWeight:400,color:C.accent}}>({sel.unit})</span>}</label><input type="number" value={form.quantity} min={1} onChange={e=>{const q=Math.max(1,+e.target.value);if(form.price_mode==="subtotal"&&form.subtotal_input){setForm({...form,quantity:q,unit_price:q>0?+(+form.subtotal_input/q).toFixed(2):""})}else if(form.unit_price){setForm({...form,quantity:q,subtotal_input:+(q*(+form.unit_price)).toFixed(2)})}else{setForm({...form,quantity:q})}}} style={inp}/></div>
-        <div><label style={lbl}>Unit Price ($) {form.price_mode==="subtotal"&&effectiveUP>0&&<span style={{fontWeight:400,color:C.accent}}>= ${effectiveUP}</span>}</label><input type="number" step=".01" value={form.price_mode==="subtotal"?"":form.unit_price} onChange={e=>{const up=e.target.value;const st=up&&form.quantity?+(form.quantity*(+up)).toFixed(2):"";setForm({...form,unit_price:up,subtotal_input:st,price_mode:"unit"})}} style={{...inp,background:form.price_mode==="subtotal"?"#F1F5F9":"#fff"}} placeholder={lastUP?`Last: $${lastUP}`:"0.00"}/></div>
-        <div><label style={lbl}>or Subtotal ($) {form.price_mode==="unit"&&+sub>0&&<span style={{fontWeight:400,color:C.accent}}>= ${(+sub).toFixed(2)}</span>}</label><input type="number" step=".01" value={form.price_mode==="unit"?"":form.subtotal_input} onChange={e=>{const st=e.target.value;const up=st&&form.quantity>0?+(+st/form.quantity).toFixed(2):"";setForm({...form,subtotal_input:st,unit_price:up,price_mode:"subtotal"})}} style={{...inp,background:form.price_mode==="unit"?"#F1F5F9":"#fff"}} placeholder="Total before tax"/></div>
-      </div>
-      <div style={{fontSize:10,color:C.textMuted,marginBottom:12,fontStyle:"italic"}}>Fill either Unit Price or Subtotal — the other calculates automatically</div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div><label style={lbl}>Location</label><select value={form.location} onChange={e=>{const newLo2=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===e.target.value&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP2=newLo2&&newLo2.quantity>0?+(newLo2.subtotal/newLo2.quantity).toFixed(2):"";setForm({...form,location:e.target.value,unit_price:newUP2||form.unit_price,subtotal_input:newUP2&&form.quantity?+(form.quantity*newUP2).toFixed(2):form.subtotal_input,price_mode:newUP2?"unit":form.price_mode})}} style={inp}><option>Suwanee</option><option>Tucker</option></select></div>
+      {/* Shared: Location + Date */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        <div><label style={lbl}>Location</label><select value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={inp}><option>Suwanee</option><option>Tucker</option></select></div>
         <div><label style={lbl}>Order Date</label><input type="date" value={form.ordered_date} onChange={e=>setForm({...form,ordered_date:e.target.value})} style={inp}/></div>
       </div>
+
+      {/* Line Items */}
+      <div style={{fontSize:12,fontWeight:700,color:C.textMuted,marginBottom:8}}>ITEMS</div>
+      {form.lines.map((ln,idx)=>{
+        const c=lineCalcs[idx];const sel=c.sel;const lo=c.lo;
+        return(<div key={ln.id} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:idx%2===0?"#fff":"#FAFBFC"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <span style={{fontSize:11,fontWeight:600,color:C.textMuted}}>Item {idx+1}</span>
+            {form.lines.length>1&&<button onClick={()=>removeLine(idx)} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:11}}><Ic name="x" size={14} color={C.danger}/></button>}
+          </div>
+          <select value={ln.item_id} onChange={e=>{const nid=e.target.value;const ns=data.items.find(i=>i.id===+nid);const nlo=ns?data.orders.filter(o=>o.item_id===ns.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const nup=nlo&&nlo.quantity>0?+(nlo.subtotal/nlo.quantity).toFixed(2):"";const nsub=nup&&ln.quantity?+(ln.quantity*nup).toFixed(2):"";updateLine(idx,"item_id",nid);updateLine(idx,"unit_price",nup);updateLine(idx,"subtotal_input",nsub);updateLine(idx,"price_mode",nup?"unit":"")}} style={{...inp,marginBottom:6}}><option value="">Select item...</option>{[...data.items].sort((a,b)=>a.name.localeCompare(b.name)).map(i=>(<option key={i.id} value={i.id}>{i.name} ({i.category})</option>))}</select>
+
+          {/* Last order context */}
+          {lo&&<div style={{padding:8,background:"#FFF7ED",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:8}}>
+            Last: {lo.ordered_date} ({fmtDur(daysAgo(lo.ordered_date))} ago) · {lo.quantity} {sel?.unit} · ${lo.total_cost.toFixed(2)} · ${c.lastUP}/ea{c.lv&&` · ${c.lv}`}{c.moUsage&&` · ~${Math.round(c.moUsage)}/mo`}
+          </div>}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            <div><label style={{...lbl,fontSize:10}}>Qty {sel&&<span style={{color:C.accent}}>({sel.unit})</span>}</label><input type="number" value={ln.quantity} min={1} onChange={e=>{const q=Math.max(1,+e.target.value);updateLine(idx,"quantity",q);if(ln.price_mode==="subtotal"&&ln.subtotal_input)updateLine(idx,"unit_price",q>0?+(+ln.subtotal_input/q).toFixed(2):"");else if(ln.unit_price)updateLine(idx,"subtotal_input",+(q*(+ln.unit_price)).toFixed(2))}} style={inp}/></div>
+            <div><label style={{...lbl,fontSize:10}}>Unit Price ($){ln.price_mode==="subtotal"&&c.eUP>0&&<span style={{color:C.accent}}> =${c.eUP}</span>}</label><input type="number" step=".01" value={ln.price_mode==="subtotal"?"":ln.unit_price} onChange={e=>{const up=e.target.value;updateLine(idx,"unit_price",up);updateLine(idx,"subtotal_input",up&&ln.quantity?+(ln.quantity*(+up)).toFixed(2):"");updateLine(idx,"price_mode","unit")}} style={{...inp,background:ln.price_mode==="subtotal"?"#F1F5F9":"#fff"}} placeholder={c.lastUP?`Last $${c.lastUP}`:""}/></div>
+            <div><label style={{...lbl,fontSize:10}}>or Subtotal ($){ln.price_mode==="unit"&&c.sub>0&&<span style={{color:C.accent}}> =${c.sub.toFixed(2)}</span>}</label><input type="number" step=".01" value={ln.price_mode==="unit"?"":ln.subtotal_input} onChange={e=>{const st=e.target.value;updateLine(idx,"subtotal_input",st);updateLine(idx,"unit_price",st&&ln.quantity>0?+(+st/ln.quantity).toFixed(2):"");updateLine(idx,"price_mode","subtotal")}} style={{...inp,background:ln.price_mode==="unit"?"#F1F5F9":"#fff"}} placeholder="Before tax"/></div>
+          </div>
+          {/* Projection */}
+          {c.newDur&&c.sub>0&&<div style={{fontSize:10,color:C.accent,marginTop:4,fontWeight:600}}>→ {ln.quantity} {sel?.unit} will last ~{fmtDur(Math.round(c.newDur*30))}{c.lastUP&&c.eUP>0&&c.eUP!==c.lastUP&&<span style={{color:c.eUP<c.lastUP?C.success:C.danger,marginLeft:6}}>({c.eUP<c.lastUP?"↓":"↑"} ${Math.abs(c.eUP-c.lastUP).toFixed(2)}/ea)</span>}</div>}
+        </div>);
+      })}
+      <button onClick={addLine} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${C.accent}`,background:"transparent",color:C.accent,fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:14}}><Ic name="plus" size={14} color={C.accent}/> Add Another Item</button>
+
+      {/* Shared: Vendor */}
       <label style={lbl}>Purchased From</label>
       {showNewV?<div style={{display:"flex",gap:6,marginBottom:12}}><input value={form.newVendor} onChange={e=>setForm({...form,newVendor:e.target.value})} placeholder="New vendor..." style={{...inp,flex:1}}/><button onClick={()=>{if(form.newVendor.trim()){const vid=h.addVendor(form.newVendor.trim());setForm(f=>({...f,vendor_id:String(vid),newVendor:""}));setShowNewV(false)}}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.accent,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>Add</button><button onClick={()=>setShowNewV(false)} style={{padding:"8px",borderRadius:8,border:`1px solid ${C.border}`,background:"#fff",cursor:"pointer"}}><Ic name="x" size={14}/></button></div>:
       <select value={form.vendor_id} onChange={e=>{if(e.target.value==="__new__")setShowNewV(true);else setForm({...form,vendor_id:e.target.value})}} style={{...inp,marginBottom:12}}><option value="">Select vendor...</option>{data.vendors.map(v=>(<option key={v.id} value={v.id}>{v.name}</option>))}<option value="__new__">+ Add new vendor...</option></select>}
+
+      {/* Shared: Tax/Ship/Disc */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
         <div><label style={lbl}>Tax ($)</label><input type="number" step=".01" value={form.tax} onChange={e=>setForm({...form,tax:e.target.value})} style={inp}/></div>
         <div><label style={lbl}>Shipping ($)</label><input type="number" step=".01" value={form.shipping} onChange={e=>setForm({...form,shipping:e.target.value})} style={inp}/></div>
         <div><label style={lbl}>Discount ($)</label><input type="number" step=".01" value={form.discount} onChange={e=>setForm({...form,discount:e.target.value})} style={inp}/></div>
       </div>
-      <label style={lbl}>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={{...inp,marginBottom:16}} placeholder="Item#, PO number, details..."/>
-      {sel&&+sub>0&&<div style={{padding:14,background:"#F1F5F9",borderRadius:10,fontSize:12,marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Subtotal ({form.quantity} × ${effectiveUP.toFixed?effectiveUP.toFixed(2):effectiveUP}/{sel.unit})</span><span style={{fontWeight:600}}>${(+sub).toFixed(2)}</span></div>
+      <label style={lbl}>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={{...inp,marginBottom:16}} placeholder="Order#, PO number..."/>
+
+      {/* Totals */}
+      {itemsSubtotal>0&&<div style={{padding:14,background:"#F1F5F9",borderRadius:10,fontSize:12,marginBottom:16}}>
+        {form.lines.length>1&&lineCalcs.map((c,i)=>c.sub>0?<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{color:C.textMuted}}>{c.sel?.name||"Item"} ({form.lines[i].quantity}×${c.eUP.toFixed?c.eUP.toFixed(2):c.eUP})</span><span>${c.sub.toFixed(2)}</span></div>:null)}
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,...(form.lines.length>1?{borderTop:`1px solid ${C.border}`,paddingTop:6,marginTop:4}:{})}}><span>Items Subtotal</span><span style={{fontWeight:600}}>${itemsSubtotal.toFixed(2)}</span></div>
         {+form.tax>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Tax</span><span>${(+form.tax).toFixed(2)}</span></div>}
         {+form.shipping>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Shipping</span><span>${(+form.shipping).toFixed(2)}</span></div>}
         {+form.discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4,color:C.success}}><span>Discount</span><span>-${(+form.discount).toFixed(2)}</span></div>}
-        <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:6}}><span style={{fontWeight:700,fontSize:14}}>Total</span><span style={{fontWeight:700,fontSize:14,color:C.accent}}>${tot.toFixed(2)}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:6}}><span style={{fontWeight:700,fontSize:14}}>Order Total</span><span style={{fontWeight:700,fontSize:14,color:C.accent}}>${grandTotal.toFixed(2)}</span></div>
       </div>}
-      <button disabled={!form.item_id||+sub<=0} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,unit_price:+effectiveUP||0,subtotal:+sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.item_id&&+sub>0)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.item_id&&+sub>0)?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
+
+      <button disabled={validLines.length===0} onClick={()=>{
+        const tax=+form.tax||0,ship=+form.shipping||0,disc=+form.discount||0;
+        const orders=validLines.map((ln,i)=>{
+          const c=lineCalcs[form.lines.indexOf(ln)];
+          const weight=itemsSubtotal>0?c.sub/itemsSubtotal:1/validLines.length;
+          const lTax=+(tax*weight).toFixed(2);const lShip=+(ship*weight).toFixed(2);const lDisc=+(disc*weight).toFixed(2);
+          const lTot=+(c.sub+lTax+lShip-lDisc).toFixed(2);
+          return{item_id:c.sel.id,item_name:c.sel.name,category:c.sel.category,type:c.sel.type,unit:c.sel.unit,location:form.location,quantity:+ln.quantity,unit_price:+c.eUP||0,subtotal:c.sub,tax:lTax,shipping:lShip,discount:lDisc,total_cost:lTot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes+(validLines.length>1?` (${i+1} of ${validLines.length})`:"")}
+        });
+        h.logOrder(orders);
+      }} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:validLines.length>0?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:validLines.length>0?"pointer":"not-allowed"}}>Log {validLines.length} Item{validLines.length!==1?"s":""} — ${grandTotal.toFixed(2)}</button>
     </>}
   </MW>;
 }
