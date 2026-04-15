@@ -148,7 +148,7 @@ function App(){
         </div>
       </header>
       <main style={{flex:1,overflow:"auto",padding:24}}>
-        {page==="dashboard"&&<Dashboard inv={inv} alerts={alerts} orders={fOrders} setModal={setModal}/>}
+        {page==="dashboard"&&<Dashboard inv={inv} alerts={alerts} orders={fOrders} setModal={setModal} data={data}/>}
         {page==="clinical"&&<SupplyTable inv={inv.filter(i=>i.type==="clinical")} type="clinical" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
         {page==="office"&&<SupplyTable inv={inv.filter(i=>i.type==="office")} type="office" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
         {page==="orders"&&<OrderHistory orders={fOrders} setModal={setModal} h={h} data={data}/>}
@@ -162,22 +162,84 @@ function App(){
   </div>);
 }
 
-function Dashboard({inv,alerts,orders,setModal}){
-  const tItems=inv.length,dueCount=alerts.filter(a=>a.orderStatus==="due").length,soonCount=alerts.filter(a=>a.orderStatus==="soon").length;
-  const pend=orders.filter(o=>o.status==="ordered").length;
-  const iss=orders.filter(o=>["returned","incomplete","wrong"].includes(o.status)).length;
-  const tm=orders.filter(o=>o.ordered_date?.startsWith(new Date().toISOString().slice(0,7)));
-  const ms=tm.reduce((s,o)=>s+o.total_cost,0);
-  const stats=[{l:"Total Items",v:tItems,icon:"package",c:C.accent,bg:C.accentLight},{l:"Due to Reorder",v:dueCount,icon:"alert",c:C.danger,bg:C.dangerBg},{l:"Order Soon",v:soonCount,icon:"clock",c:C.warning,bg:C.warningBg},{l:"Pending",v:pend,icon:"cart",c:C.blue,bg:C.blueBg}];
+function Dashboard({inv,alerts,orders,setModal,data}){
+  const now=new Date();const thisYM=now.toISOString().slice(0,7);
+  const lastM=new Date(now.getFullYear(),now.getMonth()-1,1);const lastYM=lastM.toISOString().slice(0,7);
+
+  // Only count received orders for spending
+  const rcvOrders=orders.filter(o=>o.status==="received");
+  const thisMonthSpend=rcvOrders.filter(o=>o.ordered_date?.startsWith(thisYM)).reduce((s,o)=>s+o.total_cost,0);
+  const lastMonthSpend=rcvOrders.filter(o=>o.ordered_date?.startsWith(lastYM)).reduce((s,o)=>s+o.total_cost,0);
+  const spendDiff=lastMonthSpend>0?+(((thisMonthSpend-lastMonthSpend)/lastMonthSpend)*100).toFixed(0):null;
+
+  // Pending orders (ordered but not received)
+  const pending=orders.filter(o=>o.status==="ordered").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date));
+  // Issues
+  const issues=orders.filter(o=>["returned","incomplete","wrong"].includes(o.status));
+  // Recent activity (last 5)
+  const recent=orders.slice(0,5);
+
   return(<div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16,marginBottom:24}}>{stats.map((s,i)=>(<div key={i} style={{background:C.card,borderRadius:12,padding:"20px 18px",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14}}><div style={{width:44,height:44,borderRadius:10,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic name={s.icon} size={20} color={s.c}/></div><div><div style={{fontSize:22,fontWeight:700}}>{s.v}</div><div style={{fontSize:12,color:C.textMuted}}>{s.l}</div></div></div>))}</div>
+    {/* Quick Actions */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}}>
       <button onClick={()=>setModal({type:"logOrder"})} style={{background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,border:"none",borderRadius:12,padding:24,cursor:"pointer",textAlign:"left",color:"#fff"}}><Ic name="cart" size={28} color="#fff" style={{marginBottom:8}}/><div style={{fontSize:16,fontWeight:700}}>Log New Order</div><div style={{fontSize:12,opacity:.85,marginTop:4}}>Record a supply order</div></button>
       <button onClick={()=>setModal({type:"markReceived"})} style={{background:"linear-gradient(135deg,#3B82F6,#2563EB)",border:"none",borderRadius:12,padding:24,cursor:"pointer",textAlign:"left",color:"#fff"}}><Ic name="packcheck" size={28} color="#fff" style={{marginBottom:8}}/><div style={{fontSize:16,fontWeight:700}}>Mark Received</div><div style={{fontSize:12,opacity:.85,marginTop:4}}>Update pending order</div></button>
     </div>
-    {alerts.length>0&&<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:20,marginBottom:24}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}><Ic name="alert" size={18} color={C.warning}/><h3 style={{fontSize:15,fontWeight:700}}>Reorder Alerts ({alerts.length})</h3></div><div style={{maxHeight:260,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["Item","Category","Location","Est. Stock","Next Order","Status"].map(h=>(<th key={h} style={{textAlign:"left",padding:"8px 10px",fontWeight:600,color:C.textMuted,fontSize:11,textTransform:"uppercase"}}>{h}</th>))}</tr></thead><tbody>{alerts.slice(0,10).map((a,i)=>(<tr key={i} style={{borderBottom:`1px solid ${C.border}`}}><td style={{padding:10}}>{a.name}</td><td style={{padding:10,color:C.textMuted}}>{a.category}</td><td style={{padding:10,color:C.textMuted}}>{a.location}</td><td style={{padding:10,fontWeight:600}}>{a.estStock!==null?`~${a.estStock}`:"—"}</td><td style={{padding:10,color:a.orderStatus==="due"?C.danger:C.warning}}>{a.nextOrder||"—"}</td><td style={{padding:10}}><Badge status={a.orderStatus}/></td></tr>))}</tbody></table></div></div>}
-    {tItems===0&&alerts.length===0&&<div style={{background:C.card,borderRadius:12,border:`2px dashed ${C.border}`,padding:40,textAlign:"center"}}><Ic name="package" size={40} color={C.textMuted} style={{marginBottom:12}}/><div style={{fontSize:16,fontWeight:600,marginBottom:6}}>No supplies yet</div><div style={{fontSize:13,color:C.textMuted}}>Go to Clinical or Office Supplies to add items.</div></div>}
-    <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:20,marginTop:16}}><h3 style={{fontSize:15,fontWeight:700,marginBottom:4}}>This Month</h3><div style={{fontSize:26,fontWeight:700,color:C.accent}}>${ms.toFixed(2)}</div><div style={{fontSize:12,color:C.textMuted}}>{new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div></div>
+
+    {/* Spending This Month vs Last */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:24}}>
+      <div style={{background:C.card,borderRadius:12,padding:20,border:`1px solid ${C.border}`}}>
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>This Month</div>
+        <div style={{fontSize:24,fontWeight:700,color:C.accent}}>${thisMonthSpend.toFixed(2)}</div>
+        <div style={{fontSize:11,color:C.textMuted}}>{now.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div>
+      </div>
+      <div style={{background:C.card,borderRadius:12,padding:20,border:`1px solid ${C.border}`}}>
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>Last Month</div>
+        <div style={{fontSize:24,fontWeight:700}}>${lastMonthSpend.toFixed(2)}</div>
+        <div style={{fontSize:11,color:C.textMuted}}>{lastM.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div>
+      </div>
+      <div style={{background:C.card,borderRadius:12,padding:20,border:`1px solid ${C.border}`}}>
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>Change</div>
+        <div style={{fontSize:24,fontWeight:700,color:spendDiff===null?C.textMuted:spendDiff>0?C.danger:C.success}}>{spendDiff!==null?`${spendDiff>0?"+":""}${spendDiff}%`:"—"}</div>
+        <div style={{fontSize:11,color:C.textMuted}}>vs last month</div>
+      </div>
+    </div>
+
+    {/* Pending Orders */}
+    {pending.length>0&&<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:20,marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}><Ic name="clock" size={18} color={C.blue}/><h3 style={{fontSize:15,fontWeight:700}}>Pending Orders ({pending.length})</h3></div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>{pending.map(o=>{const vn=data.vendors.find(v=>v.id===o.vendor_id)?.name;return(<div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:"#F8FAFC",borderRadius:8}}>
+        <div><div style={{fontWeight:500,fontSize:13}}>{o.item_name}</div><div style={{fontSize:11,color:C.textMuted}}>{o.location} · {o.quantity} {o.unit||""} · ${o.total_cost.toFixed(2)} · Ordered {o.ordered_date}{vn&&` · ${vn}`}</div></div>
+        <button onClick={()=>setModal({type:"markReceivedOne",order:o})} style={{padding:"5px 14px",borderRadius:6,border:"none",background:C.success,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Receive</button>
+      </div>)})}</div>
+    </div>}
+
+    {/* Issues */}
+    {issues.length>0&&<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.danger}30`,padding:20,marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}><Ic name="alert" size={18} color={C.danger}/><h3 style={{fontSize:15,fontWeight:700,color:C.danger}}>Issues ({issues.length})</h3></div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>{issues.map(o=>(<div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:C.dangerBg,borderRadius:8}}>
+        <div><span style={{fontWeight:500,fontSize:13}}>{o.item_name}</span><span style={{fontSize:11,color:C.textMuted,marginLeft:8}}>{o.location} · {o.ordered_date}</span></div>
+        <Badge status={o.status}/>
+      </div>))}</div>
+    </div>}
+
+    {/* Recent Orders */}
+    {recent.length>0&&<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:20}}>
+      <h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>Recent Orders</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>{recent.map(o=>{const vn=data.vendors.find(v=>v.id===o.vendor_id)?.name;return(<div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:11,color:C.textMuted,minWidth:65}}>{o.ordered_date}</span>
+          <span style={{fontWeight:500,fontSize:13}}>{o.item_name}</span>
+          <span style={{fontSize:11,color:C.textMuted}}>{o.quantity} {o.unit||""}{vn&&` · ${vn}`}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontWeight:600,fontSize:13}}>${o.total_cost.toFixed(2)}</span>
+          <Badge status={o.status}/>
+        </div>
+      </div>)})}</div>
+    </div>}
+
+    {orders.length===0&&<div style={{background:C.card,borderRadius:12,border:`2px dashed ${C.border}`,padding:40,textAlign:"center"}}><Ic name="package" size={40} color={C.textMuted} style={{marginBottom:12}}/><div style={{fontSize:16,fontWeight:600,marginBottom:6}}>No activity yet</div><div style={{fontSize:13,color:C.textMuted}}>Log your first order to get started.</div></div>}
   </div>);
 }
 
@@ -195,18 +257,23 @@ function SupplyTable({inv,type,setModal,h,getLastOrder,vendors}){
     </div>
     <div style={{fontSize:12,color:C.textMuted,marginBottom:10}}>{filtered.length} items</div>
     {inv.length===0?<div style={{background:C.card,borderRadius:12,border:`2px dashed ${C.border}`,padding:48,textAlign:"center"}}><Ic name="package" size={36} color={C.textMuted} style={{marginBottom:10}}/><div style={{fontSize:15,fontWeight:600}}>No {tl.toLowerCase()} supplies yet</div><div style={{fontSize:13,color:C.textMuted,marginTop:6}}>Click "Add {tl}" to get started.</div></div>:(
-      <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:900}}>
-        <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["Item & Last Order","Category","Location","Unit","Est. Stock","Last Price","Next Order","Status","Actions"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 12px",fontWeight:600,color:C.textMuted,fontSize:11,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
+      <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:1100}}>
+        <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["Item Info","Category","Location","Unit","Usage","Est. Stock","Last Price","Next Order","Status","Actions"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 12px",fontWeight:600,color:C.textMuted,fontSize:11,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
         <tbody>{filtered.map(item=>{
           const key=`${item.id}-${item.location}`;const isEd=editId===key;
           const lo=getLastOrder(item.id,item.location);const vn=lo?vendors.find(v=>v.id===lo.vendor_id)?.name:null;const da=lo?daysAgo(lo.ordered_date):null;
           const lastUnitPrice=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
+          const moUsage=item.dailyUsage?+(item.dailyUsage*30).toFixed(1):null;
+          const estMonthsLeft=moUsage&&item.estStock?+(item.estStock/moUsage).toFixed(1):null;
           return(<tr key={key} style={{borderBottom:`1px solid ${C.border}`,background:isEd?"#F0FDFA":"transparent"}} onMouseEnter={e=>{if(!isEd)e.currentTarget.style.background="#F8FAFC"}} onMouseLeave={e=>{if(!isEd)e.currentTarget.style.background="transparent"}}>
-            <td style={{padding:"10px 12px"}}>{isEd?<input value={editRow.name} onChange={e=>setEditRow({...editRow,name:e.target.value})} style={{...inpSm,width:200}}/>:<div style={{fontWeight:500}}>{item.name}</div>}{!isEd&&lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:3,display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}><Ic name="calclock" size={10} color={C.textMuted}/>Last: {lo.ordered_date} ({fmtDur(da)} ago) · {lo.quantity} {lo.unit||""} · ${lo.total_cost.toFixed(2)}{vn&&<span> · {vn}</span>}</div>}{!isEd&&!lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:2,fontStyle:"italic"}}>No orders yet</div>}</td>
+            <td style={{padding:"10px 12px"}}>{isEd?<input value={editRow.name} onChange={e=>setEditRow({...editRow,name:e.target.value})} style={{...inpSm,width:200}}/>:<div style={{fontWeight:500}}>{item.name}</div>}{!isEd&&lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:3,lineHeight:1.5}}>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}><Ic name="calclock" size={10} color={C.textMuted}/>Last: {lo.ordered_date} ({fmtDur(da)} ago) · {lo.quantity} {item.unit} · ${lo.total_cost.toFixed(2)}{vn&&<span> · {vn}</span>}</div>
+            </div>}{!isEd&&!lo&&<div style={{fontSize:10,color:C.textMuted,marginTop:2,fontStyle:"italic"}}>No orders yet</div>}</td>
             <td style={{padding:"10px 12px",color:C.textMuted}}>{isEd?<input value={editRow.category} onChange={e=>setEditRow({...editRow,category:e.target.value})} style={{...inpSm,width:110}}/>:item.category}</td>
             <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{item.location}</td>
             <td style={{padding:"10px 12px",color:C.textMuted,fontSize:12}}>{isEd?<input value={editRow.unit} onChange={e=>setEditRow({...editRow,unit:e.target.value})} style={{...inpSm,width:80}}/>:item.unit}</td>
-            <td style={{padding:"10px 12px"}}>{item.estStock!==null?<span style={{fontWeight:600,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.text}}>~{item.estStock}</span>:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px 12px"}}>{moUsage?<div><div style={{fontWeight:600,color:C.accent}}>~{moUsage<1?item.dailyUsage+"/day":Math.round(moUsage)+"/mo"}</div><div style={{fontSize:10,color:C.textMuted}}>last order lasted {fmtDur(Math.round((lo?.quantity||0)/(item.dailyUsage||1)))}</div></div>:<span style={{color:C.textMuted,fontSize:11}}>Need 2+ orders</span>}</td>
+            <td style={{padding:"10px 12px"}}>{item.estStock!==null?<div><div style={{fontWeight:600,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.text}}>~{item.estStock} {item.unit}</div>{estMonthsLeft!==null&&<div style={{fontSize:10,color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.success}}>~{fmtDur(Math.round(estMonthsLeft*30))} left</div>}</div>:<span style={{color:C.textMuted}}>—</span>}</td>
             <td style={{padding:"10px 12px",color:lastUnitPrice?C.text:C.textMuted}}>{lastUnitPrice?`$${lastUnitPrice}`:"—"}</td>
             <td style={{padding:"10px 12px",fontSize:12}}>{item.nextOrder?<span style={{color:item.orderStatus==="due"?C.danger:item.orderStatus==="soon"?C.warning:C.textMuted}}>{item.nextOrder}</span>:<span style={{color:C.textMuted}}>—</span>}</td>
             <td style={{padding:"10px 12px"}}><Badge status={item.orderStatus}/></td>
