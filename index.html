@@ -466,7 +466,7 @@ function Modal({modal,setModal,data,loc,h}){
   const pending=data.orders.filter(o=>o.status==="ordered"&&(loc==="All"||o.location===loc));
 
   if(modal.type==="addItem"){
-    const cats=modal.itemType==="clinical"?["Brackets","Wires","Bands","Elastics","Bonding Adhesive","Separators","Retainer Materials","Cheek Retractors","Ligature Ties","Archwires","Debonding Burs","Cheek Cushions","Disposables","Anesthesia"]:["Wipes","Towels","Cleaning Products","Sterilization Supplies","Patient Amenities"];
+    const cats=modal.itemType==="clinical"?["3D Printing","Anesthesia","Archwires","Attachments/Auxiliaries","Bands","Bonding Adhesive","Brackets","Cheek Cushions","Cheek Retractors","Debonding Burs","Disposables","Elastics","Equipment","Ligature Ties","Retainer Materials","Separators","Wires"]:["Cleaning Products","Patient Amenities","Sterilization Supplies","Towels","Wipes"];
     return<MW t={`Add ${modal.itemType==="clinical"?"Clinical":"Office"} Item`} onClose={()=>setModal(null)}>
       <label style={lbl}>Item Name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{...inp,marginBottom:12}} placeholder="e.g. Bracket Removal Plier"/>
       <label style={lbl}>Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{...inp,marginBottom:12}}><option value="">Select...</option>{cats.map(c=><option key={c}>{c}</option>)}</select>
