@@ -53,6 +53,7 @@ const PATHS={
   fileup:["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z","M14 2v6h6","M12 12v6","M15 15l-3-3-3 3"],
   store:["M3 3h18v4H3z","M21 7v14H3V7","M10 11h4v10h-4z"],
   calclock:["M12 22a10 10 0 100-20 10 10 0 000 20z","M12 6v6l3 3"],
+  analytics:["M18 20V10","M12 20V4","M6 20v-6"],
 };
 function Ic({name,size=18,color="currentColor",style={}}){
   const paths=PATHS[name]||PATHS.package;
@@ -91,12 +92,12 @@ function App(){
     logOrder(order){setData(p=>({...p,orders:[...p.orders,{...order,id:(p.orders.length>0?Math.max(...p.orders.map(o=>o.id)):0)+1,status:"ordered",received_date:null}]}));showToast("Order logged");setModal(null)},
     updateOrder(id,u){setData(p=>({...p,orders:p.orders.map(o=>o.id===id?{...o,...u}:o)}));showToast("Order updated")},
     deleteOrder(id){setData(p=>({...p,orders:p.orders.filter(o=>o.id!==id)}));showToast("Order deleted")},
-    markReceived(id){setData(p=>{const idx=p.orders.findIndex(o=>o.id===id);if(idx<0)return p;const order=p.orders[idx];const no=[...p.orders];no[idx]={...order,status:"received",received_date:new Date().toISOString().slice(0,10)};const ni=p.inventory.map(inv=>inv.item_id===order.item_id&&inv.location===order.location?{...inv,quantity:inv.quantity+order.quantity}:inv);return{...p,orders:no,inventory:ni}});showToast("Received — stock updated")},
+    markReceived(id,rcvDate){setData(p=>{const idx=p.orders.findIndex(o=>o.id===id);if(idx<0)return p;const order=p.orders[idx];const no=[...p.orders];no[idx]={...order,status:"received",received_date:rcvDate||new Date().toISOString().slice(0,10)};const ni=p.inventory.map(inv=>inv.item_id===order.item_id&&inv.location===order.location?{...inv,quantity:inv.quantity+order.quantity}:inv);return{...p,orders:no,inventory:ni}});showToast("Received — stock updated")},
     updateStock(iid,l,q){setData(p=>({...p,inventory:p.inventory.map(inv=>inv.item_id===iid&&inv.location===l?{...inv,quantity:q}:inv)}));showToast("Stock updated");setModal(null)},
     updateThreshold(iid,l,v){setData(p=>({...p,inventory:p.inventory.map(inv=>inv.item_id===iid&&inv.location===l?{...inv,reorder_threshold:v}:inv)}))},
     updateItem(iid,u){setData(p=>({...p,items:p.items.map(it=>it.id===iid?{...it,...u}:it)}));showToast("Item updated")},
     deleteItem(iid){setData(p=>({...p,items:p.items.filter(it=>it.id!==iid),inventory:p.inventory.filter(inv=>inv.item_id!==iid),orders:p.orders.filter(o=>o.item_id!==iid)}));showToast("Item deleted")},
-    addItem(item){setData(p=>{const nid=p.nextItemId||1;const ni=["Suwanee","Tucker"].map(l=>({item_id:nid,location:l,quantity:0,reorder_threshold:5}));return{...p,items:[...p.items,{...item,id:nid}],inventory:[...p.inventory,...ni],nextItemId:nid+1}});showToast("Item added");setModal(null)},
+    addItem(item,itemLoc){setData(p=>{const nid=p.nextItemId||1;const locs=itemLoc==="Both"?["Suwanee","Tucker"]:[itemLoc];const ni=locs.map(l=>({item_id:nid,location:l,quantity:0,reorder_threshold:5}));return{...p,items:[...p.items,{...item,id:nid}],inventory:[...p.inventory,...ni],nextItemId:nid+1}});showToast("Item added");setModal(null)},
     addVendor(name){let vid;setDataRaw(prev=>{const exists=prev.vendors.find(v=>v.name.toLowerCase()===name.toLowerCase());if(exists){vid=exists.id;return prev}const nid=prev.nextVendorId||1;vid=nid;const next={...prev,vendors:[...prev.vendors,{id:nid,name}],nextVendorId:nid+1};saveData(next);return next});return vid},
     deleteVendor(id){setData(p=>({...p,vendors:p.vendors.filter(v=>v.id!==id)}));showToast("Vendor removed")},
     updateVendor(id,name){setData(p=>({...p,vendors:p.vendors.map(v=>v.id===id?{...v,name}:v)}));showToast("Vendor updated")},
@@ -107,7 +108,7 @@ function App(){
   const clearAll=()=>{setData({...EMPTY_DATA});try{localStorage.removeItem(SK)}catch(e){}showToast("Cleared")};
   const exportCSV=type=>{let rows,hd;if(type==="inventory"){hd=["Item","Category","Type","Location","Qty","Threshold","Unit","Status"];rows=inv.map(i=>[i.name,i.category,i.type,i.location,i.quantity,i.reorder_threshold,i.unit,i.status])}else{hd=["ID","Item","Category","Type","Location","Qty","Unit","Subtotal","Tax","Ship","Disc","Total","Status","Vendor","Ordered","Received"];rows=fOrders.map(o=>{const vn=data.vendors.find(v=>v.id===o.vendor_id);return[o.id,o.item_name,o.category,o.type,o.location,o.quantity,o.unit||"",o.subtotal||0,o.tax||0,o.shipping||0,o.discount||0,o.total_cost,o.status,vn?.name||"",o.ordered_date,o.received_date||""]})}const csv=[hd,...rows].map(r=>r.join(",")).join("\n");const a=document.createElement("a");a.href=`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;a.download=`${type}.csv`;a.click()};
 
-  const NAV=[{id:"dashboard",icon:"dashboard",label:"Dashboard"},{id:"clinical",icon:"package",label:"Clinical Supplies"},{id:"office",icon:"briefcase",label:"Office Supplies"},{id:"orders",icon:"clipboard",label:"Order History"},{id:"spending",icon:"dollar",label:"Monthly Spending"},{id:"settings",icon:"settings",label:"Settings"}];
+  const NAV=[{id:"dashboard",icon:"dashboard",label:"Dashboard"},{id:"clinical",icon:"package",label:"Clinical Supplies"},{id:"office",icon:"briefcase",label:"Office Supplies"},{id:"orders",icon:"clipboard",label:"Order History"},{id:"analytics",icon:"analytics",label:"Analytics"},{id:"spending",icon:"dollar",label:"Monthly Spending"},{id:"settings",icon:"settings",label:"Settings"}];
 
   return(<div style={{display:"flex",height:"100vh",background:C.bg,overflow:"hidden"}}>
     <div style={{width:sideOpen?240:56,minWidth:sideOpen?240:56,background:C.sidebar,color:"#fff",display:"flex",flexDirection:"column",transition:"width .2s,min-width .2s",overflow:"hidden",zIndex:20}}>
@@ -131,6 +132,7 @@ function App(){
         {page==="clinical"&&<SupplyTable inv={inv.filter(i=>i.type==="clinical")} type="clinical" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
         {page==="office"&&<SupplyTable inv={inv.filter(i=>i.type==="office")} type="office" setModal={setModal} h={h} getLastOrder={getLastOrder} vendors={data.vendors}/>}
         {page==="orders"&&<OrderHistory orders={fOrders} setModal={setModal} h={h} data={data}/>}
+        {page==="analytics"&&<Analytics inv={inv} data={data} loc={loc}/>}
         {page==="spending"&&<Spending orders={fOrders}/>}
         {page==="settings"&&<SettingsPage eCSV={exportCSV} eJSON={exportJSON} iJSON={importJSON} clearAll={clearAll} data={data} h={h}/>}
       </main>
@@ -206,8 +208,8 @@ function OrderHistory({orders,setModal,h,data}){
       <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13,background:"#fff"}}><option value="All">All</option><option value="ordered">Ordered</option><option value="received">Received</option><option value="returned">Returned</option><option value="incomplete">Incomplete</option><option value="wrong">Wrong</option></select>
     </div>
     {orders.length===0?<div style={{background:C.card,borderRadius:12,border:`2px dashed ${C.border}`,padding:48,textAlign:"center"}}><div style={{fontSize:15,fontWeight:600}}>No orders yet</div></div>:(
-      <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1150}}>
-        <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["#","Item","Type","Loc","Qty","Unit","Vendor","Sub","Tax","Ship","Disc","Total","Status","Date","Actions"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 6px",fontWeight:600,color:C.textMuted,fontSize:10,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
+      <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1300}}>
+        <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["#","Item","Type","Loc","Qty","Unit","Vendor","Sub","Tax","Ship","Disc","Total","Status","Ordered","Received","Actions"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 6px",fontWeight:600,color:C.textMuted,fontSize:10,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
         <tbody>{filtered.map(o=>{const isEd=editId===o.id;const vn=data.vendors.find(v=>v.id===o.vendor_id)?.name||"—";
           return(<tr key={o.id} style={{borderBottom:`1px solid ${C.border}`,background:isEd?"#F0FDFA":"transparent"}}>
             <td style={{padding:"8px 6px",color:C.textMuted}}>#{o.id}</td>
@@ -216,7 +218,7 @@ function OrderHistory({orders,setModal,h,data}){
             <td style={{padding:"8px 6px",color:C.textMuted}}>{isEd?<select value={editRow.location} onChange={e=>setEditRow({...editRow,location:e.target.value})} style={{...inpSm,width:80}}><option>Suwanee</option><option>Tucker</option></select>:o.location}</td>
             <td style={{padding:"8px 6px",fontWeight:600}}>{isEd?<input type="number" value={editRow.quantity} min={1} onChange={e=>setEditRow({...editRow,quantity:Math.max(1,+e.target.value)})} style={{...inpSm,width:45}}/>:o.quantity}</td>
             <td style={{padding:"8px 6px",color:C.textMuted,fontSize:11}}>{o.unit||"—"}</td>
-            <td style={{padding:"8px 6px",color:C.textMuted,fontSize:11}}>{vn}</td>
+            <td style={{padding:"8px 6px",color:C.textMuted,fontSize:11}}>{isEd?<select value={editRow.vendor_id||""} onChange={e=>setEditRow({...editRow,vendor_id:e.target.value})} style={{...inpSm,width:90}}><option value="">None</option>{data.vendors.map(v=>(<option key={v.id} value={v.id}>{v.name}</option>))}</select>:vn}</td>
             <td style={{padding:"8px 6px"}}>${(o.subtotal||0).toFixed(2)}</td>
             <td style={{padding:"8px 6px"}}>{isEd?<input type="number" step=".01" value={editRow.tax} onChange={e=>setEditRow({...editRow,tax:e.target.value})} style={{...inpSm,width:48}}/>:`$${(o.tax||0).toFixed(2)}`}</td>
             <td style={{padding:"8px 6px"}}>{isEd?<input type="number" step=".01" value={editRow.shipping} onChange={e=>setEditRow({...editRow,shipping:e.target.value})} style={{...inpSm,width:48}}/>:`$${(o.shipping||0).toFixed(2)}`}</td>
@@ -224,9 +226,134 @@ function OrderHistory({orders,setModal,h,data}){
             <td style={{padding:"8px 6px",fontWeight:700}}>${o.total_cost.toFixed(2)}</td>
             <td style={{padding:"8px 6px"}}><Badge status={o.status}/></td>
             <td style={{padding:"8px 6px",color:C.textMuted,fontSize:11}}>{isEd?<input type="date" value={editRow.ordered_date} onChange={e=>setEditRow({...editRow,ordered_date:e.target.value})} style={{...inpSm,width:112}}/>:o.ordered_date}</td>
-            <td style={{padding:"8px 6px"}}><div style={{display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>{isEd?<><button onClick={()=>{const up=o.unit_price||(o.subtotal&&o.quantity?o.subtotal/o.quantity:0);const sub=+(editRow.quantity*up).toFixed(2);const tot=+(sub+(+editRow.tax||0)+(+editRow.shipping||0)-(+editRow.discount||0)).toFixed(2);h.updateOrder(o.id,{quantity:+editRow.quantity,location:editRow.location,notes:editRow.notes,tax:+editRow.tax,shipping:+editRow.shipping,discount:+editRow.discount,subtotal:sub,total_cost:tot,ordered_date:editRow.ordered_date});setEditId(null)}} style={btnSm(C.success,"#fff")}><Ic name="save" size={12} color="#fff"/></button><button onClick={()=>setEditId(null)} style={btnSm("#E2E5EB",C.text)}><Ic name="x" size={12}/></button></>:<><select value="" onChange={e=>{const v=e.target.value;if(!v)return;if(v==="received")h.markReceived(o.id);else h.updateOrder(o.id,{status:v})}} style={{...inpSm,width:68,color:C.textMuted,fontSize:10}}><option value="">Status</option>{["received","ordered","returned","incomplete","wrong"].filter(s=>s!==o.status).map(s=>(<option key={s} value={s}>{s[0].toUpperCase()+s.slice(1)}</option>))}</select><button onClick={()=>{setEditId(o.id);setEditRow({quantity:o.quantity,location:o.location,notes:o.notes||"",tax:o.tax||0,shipping:o.shipping||0,discount:o.discount||0,ordered_date:o.ordered_date})}} style={btnSm(C.blueBg,C.blue)}><Ic name="pencil" size={12} color={C.blue}/></button>{confirmDel===o.id?<div style={{display:"flex",gap:2}}><button onClick={()=>{h.deleteOrder(o.id);setConfirmDel(null)}} style={btnSm(C.danger,"#fff")}>Yes</button><button onClick={()=>setConfirmDel(null)} style={btnSm("#E2E5EB",C.text)}>No</button></div>:<button onClick={()=>setConfirmDel(o.id)} style={btnSm(C.dangerBg,C.danger)}><Ic name="trash" size={12} color={C.danger}/></button>}</>}</div></td>
+            <td style={{padding:"8px 6px",color:C.textMuted,fontSize:11}}>{isEd?<input type="date" value={editRow.received_date||""} onChange={e=>setEditRow({...editRow,received_date:e.target.value})} style={{...inpSm,width:112}}/>:o.received_date||"—"}</td>
+            <td style={{padding:"8px 6px"}}><div style={{display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>{isEd?<><button onClick={()=>{const up=o.unit_price||(o.subtotal&&o.quantity?o.subtotal/o.quantity:0);const sub=+(editRow.quantity*up).toFixed(2);const tot=+(sub+(+editRow.tax||0)+(+editRow.shipping||0)-(+editRow.discount||0)).toFixed(2);h.updateOrder(o.id,{quantity:+editRow.quantity,location:editRow.location,notes:editRow.notes,tax:+editRow.tax,shipping:+editRow.shipping,discount:+editRow.discount,subtotal:sub,total_cost:tot,ordered_date:editRow.ordered_date,received_date:editRow.received_date||null,vendor_id:editRow.vendor_id?+editRow.vendor_id:null});setEditId(null)}} style={btnSm(C.success,"#fff")}><Ic name="save" size={12} color="#fff"/></button><button onClick={()=>setEditId(null)} style={btnSm("#E2E5EB",C.text)}><Ic name="x" size={12}/></button></>:<><select value="" onChange={e=>{const v=e.target.value;if(!v)return;if(v==="received")setModal({type:"markReceivedOne",order:o});else h.updateOrder(o.id,{status:v})}} style={{...inpSm,width:68,color:C.textMuted,fontSize:10}}><option value="">Status</option>{["received","ordered","returned","incomplete","wrong"].filter(s=>s!==o.status).map(s=>(<option key={s} value={s}>{s[0].toUpperCase()+s.slice(1)}</option>))}</select><button onClick={()=>{setEditId(o.id);setEditRow({quantity:o.quantity,location:o.location,notes:o.notes||"",tax:o.tax||0,shipping:o.shipping||0,discount:o.discount||0,ordered_date:o.ordered_date,received_date:o.received_date||"",vendor_id:o.vendor_id||""})}} style={btnSm(C.blueBg,C.blue)}><Ic name="pencil" size={12} color={C.blue}/></button>{confirmDel===o.id?<div style={{display:"flex",gap:2}}><button onClick={()=>{h.deleteOrder(o.id);setConfirmDel(null)}} style={btnSm(C.danger,"#fff")}>Yes</button><button onClick={()=>setConfirmDel(null)} style={btnSm("#E2E5EB",C.text)}>No</button></div>:<button onClick={()=>setConfirmDel(o.id)} style={btnSm(C.dangerBg,C.danger)}><Ic name="trash" size={12} color={C.danger}/></button>}</>}</div></td>
           </tr>)})}</tbody>
       </table>{filtered.length===0&&<div style={{padding:40,textAlign:"center",color:C.textMuted}}>No orders match</div>}</div>)}
+  </div>);
+}
+
+// ─── Analytics ───────────────────────────────────────────────────────
+function Analytics({inv,data,loc}){
+  const[sortBy,setSortBy]=useState("urgency");const[typeF,setTypeF]=useState("All");
+  
+  // Build analytics for each unique item across locations
+  const analytics=useMemo(()=>{
+    const items=inv.map(item=>{
+      // Get all received orders for this item+location
+      const orders=data.orders.filter(o=>o.item_id===item.id&&o.location===item.location&&o.status==="received"&&o.received_date).sort((a,b)=>a.received_date.localeCompare(b.received_date));
+      const allOrders=data.orders.filter(o=>o.item_id===item.id&&o.location===item.location).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date));
+      const lastOrder=allOrders[0]||null;
+      const lastReceived=orders.length>0?orders[orders.length-1]:null;
+      const vendor=lastOrder?data.vendors.find(v=>v.id===lastOrder.vendor_id)?.name:null;
+      
+      // Calculate usage rate from most recent received order
+      let dailyUsage=null;let daysLeft=null;let reorderDate=null;let estDuration=null;
+      if(lastReceived){
+        const daysSinceRcv=daysAgo(lastReceived.received_date);
+        if(daysSinceRcv>0){
+          const consumed=lastReceived.quantity-item.quantity;
+          if(consumed>0){
+            dailyUsage=+(consumed/daysSinceRcv).toFixed(2);
+            daysLeft=dailyUsage>0?Math.round(item.quantity/dailyUsage):null;
+            // Reorder when stock hits threshold
+            const daysToThreshold=dailyUsage>0?Math.round((item.quantity-item.reorder_threshold)/dailyUsage):null;
+            if(daysToThreshold!==null){
+              const rd=new Date();rd.setDate(rd.getDate()+Math.max(0,daysToThreshold));
+              reorderDate=rd.toISOString().slice(0,10);
+            }
+          }
+          // Estimated duration = how long the last order lasted / would last
+          if(dailyUsage>0)estDuration=Math.round(lastReceived.quantity/dailyUsage);
+        }
+      }
+      
+      // Order frequency (average days between orders)
+      let avgFreq=null;
+      if(allOrders.length>=2){
+        const dates=allOrders.map(o=>new Date(o.ordered_date).getTime()).sort((a,b)=>a-b);
+        let totalGap=0;
+        for(let i=1;i<dates.length;i++)totalGap+=dates[i]-dates[i-1];
+        avgFreq=Math.round(totalGap/((dates.length-1)*864e5));
+      }
+      
+      // Last unit price
+      const lastUP=lastOrder&&lastOrder.quantity>0&&lastOrder.subtotal?+(lastOrder.subtotal/lastOrder.quantity).toFixed(2):null;
+      
+      // Urgency score (lower = more urgent)
+      const urgency=daysLeft!==null?daysLeft:(item.quantity<=0?-1:9999);
+      
+      return{...item,dailyUsage,daysLeft,reorderDate,estDuration,avgFreq,lastOrder,lastUP,vendor,urgency,totalOrders:allOrders.length};
+    });
+    
+    // Filter
+    let filtered=typeF==="All"?items:items.filter(i=>i.type===typeF);
+    
+    // Sort
+    if(sortBy==="urgency")filtered.sort((a,b)=>a.urgency-b.urgency);
+    else if(sortBy==="name")filtered.sort((a,b)=>a.name.localeCompare(b.name));
+    else if(sortBy==="usage")filtered.sort((a,b)=>(b.dailyUsage||0)-(a.dailyUsage||0));
+    else if(sortBy==="frequency")filtered.sort((a,b)=>(a.avgFreq||9999)-(b.avgFreq||9999));
+    
+    return filtered;
+  },[inv,data,loc,sortBy,typeF]);
+  
+  const needsReorder=analytics.filter(i=>i.daysLeft!==null&&i.daysLeft<=14);
+  const noData=analytics.filter(i=>i.totalOrders===0);
+
+  if(inv.length===0)return<div style={{background:C.card,borderRadius:12,border:`2px dashed ${C.border}`,padding:48,textAlign:"center"}}><Ic name="analytics" size={40} color={C.textMuted} style={{marginBottom:12}}/><div style={{fontSize:16,fontWeight:600}}>No data yet</div><div style={{fontSize:13,color:C.textMuted,marginTop:6}}>Add items and log orders to see usage analytics.</div></div>;
+
+  return(<div>
+    {/* Summary cards */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
+      <div style={{background:C.card,borderRadius:12,padding:"20px 18px",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14}}><div style={{width:44,height:44,borderRadius:10,background:C.dangerBg,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic name="alert" size={20} color={C.danger}/></div><div><div style={{fontSize:22,fontWeight:700}}>{needsReorder.length}</div><div style={{fontSize:12,color:C.textMuted}}>Reorder Within 14d</div></div></div>
+      <div style={{background:C.card,borderRadius:12,padding:"20px 18px",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14}}><div style={{width:44,height:44,borderRadius:10,background:C.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic name="analytics" size={20} color={C.accent}/></div><div><div style={{fontSize:22,fontWeight:700}}>{analytics.filter(i=>i.dailyUsage!==null).length}</div><div style={{fontSize:12,color:C.textMuted}}>Items Tracked</div></div></div>
+      <div style={{background:C.card,borderRadius:12,padding:"20px 18px",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14}}><div style={{width:44,height:44,borderRadius:10,background:C.warningBg,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic name="clock" size={20} color={C.warning}/></div><div><div style={{fontSize:22,fontWeight:700}}>{noData.length}</div><div style={{fontSize:12,color:C.textMuted}}>Need Order Data</div></div></div>
+    </div>
+
+    {/* Reorder alerts */}
+    {needsReorder.length>0&&<div style={{background:"#FEF2F2",borderRadius:12,border:`1px solid #FECACA`,padding:16,marginBottom:20}}>
+      <div style={{fontWeight:700,fontSize:14,color:C.danger,marginBottom:8}}><Ic name="alert" size={16} color={C.danger} style={{marginRight:6}}/>Projected Reorders (Next 14 Days)</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{needsReorder.map((item,i)=>(<div key={i} style={{background:"#fff",borderRadius:8,padding:"8px 12px",fontSize:12,border:"1px solid #FECACA"}}>
+        <div style={{fontWeight:600}}>{item.name}</div>
+        <div style={{color:C.textMuted,fontSize:11}}>{item.location} · {item.daysLeft<=0?<span style={{color:C.danger,fontWeight:600}}>OUT NOW</span>:<span>{item.daysLeft}d left</span>} · Reorder by {item.reorderDate}</div>
+      </div>))}</div>
+    </div>}
+
+    {/* Controls */}
+    <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:12,color:C.textMuted,fontWeight:600}}>Sort by:</span>
+      {[["urgency","Urgency"],["name","Name"],["usage","Usage Rate"],["frequency","Order Freq"]].map(([v,l])=>(<button key={v} onClick={()=>setSortBy(v)} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${sortBy===v?C.accent:C.border}`,background:sortBy===v?C.accentLight:"#fff",color:sortBy===v?C.accent:C.textMuted,fontSize:12,fontWeight:500,cursor:"pointer"}}>{l}</button>))}
+      <div style={{flex:1}}/>
+      <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:12,background:"#fff"}}><option value="All">All Types</option><option value="clinical">Clinical</option><option value="office">Office</option></select>
+    </div>
+
+    {/* Projections table */}
+    <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1000}}>
+        <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>{["Item","Location","Stock","Daily Usage","Days Left","Est. Duration","Reorder By","Avg Order Freq","Last Price","Last Vendor","Orders"].map(t=>(<th key={t} style={{textAlign:"left",padding:"10px 10px",fontWeight:600,color:C.textMuted,fontSize:10,textTransform:"uppercase",whiteSpace:"nowrap"}}>{t}</th>))}</tr></thead>
+        <tbody>{analytics.map((item,i)=>{
+          const urgColor=item.daysLeft===null?C.textMuted:item.daysLeft<=0?C.danger:item.daysLeft<=7?C.danger:item.daysLeft<=14?C.warning:item.daysLeft<=30?C.blue:C.success;
+          return(<tr key={i} style={{borderBottom:`1px solid ${C.border}`}} onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <td style={{padding:"10px"}}><div style={{fontWeight:500}}>{item.name}</div><span style={{padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:600,background:item.type==="clinical"?C.accentLight:C.blueBg,color:item.type==="clinical"?C.accent:C.blue,textTransform:"uppercase"}}>{item.type}</span></td>
+            <td style={{padding:"10px",color:C.textMuted}}>{item.location}</td>
+            <td style={{padding:"10px"}}><span style={{fontWeight:600,color:item.quantity<=item.reorder_threshold?C.danger:C.text}}>{item.quantity}</span> <span style={{fontSize:10,color:C.textMuted}}>/ {item.reorder_threshold} min</span></td>
+            <td style={{padding:"10px"}}>{item.dailyUsage!==null?<span style={{fontWeight:500}}>{item.dailyUsage}/{item.unit?.split("/")[0]||"d"}</span>:<span style={{color:C.textMuted,fontStyle:"italic"}}>—</span>}</td>
+            <td style={{padding:"10px"}}>{item.daysLeft!==null?<span style={{fontWeight:700,color:urgColor,fontSize:13}}>{item.daysLeft<=0?"0":item.daysLeft}d</span>:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px"}}>{item.estDuration?<span>{item.estDuration}d <span style={{fontSize:10,color:C.textMuted}}>per order</span></span>:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px"}}>{item.reorderDate?<span style={{fontWeight:500,color:urgColor}}>{item.reorderDate}</span>:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px"}}>{item.avgFreq?<span>{item.avgFreq}d</span>:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px"}}>{item.lastUP?`$${item.lastUP}`:<span style={{color:C.textMuted}}>—</span>}</td>
+            <td style={{padding:"10px",color:C.textMuted,fontSize:11}}>{item.vendor||"—"}</td>
+            <td style={{padding:"10px",color:C.textMuted}}>{item.totalOrders}</td>
+          </tr>)})}</tbody>
+      </table>
+      {analytics.length===0&&<div style={{padding:40,textAlign:"center",color:C.textMuted}}>No items match</div>}
+    </div>
+    
+    <div style={{marginTop:16,padding:14,background:"#F1F5F9",borderRadius:10,fontSize:12,color:C.textMuted,lineHeight:1.6}}>
+      <strong>How projections work:</strong> Usage rate is calculated from your last received order — (qty received - current stock) ÷ days since received. "Days Left" = current stock ÷ daily usage. "Reorder By" = when stock will hit your threshold. More orders logged = more accurate projections. Items showing "—" need at least one received order to calculate.
+    </div>
   </div>);
 }
 
@@ -274,7 +401,7 @@ function SettingsPage({eCSV,eJSON,iJSON,clearAll,data,h}){
 function Modal({modal,setModal,data,loc,h}){
   const[form,setForm]=useState(()=>{
     if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:"",ordered_date:new Date().toISOString().slice(0,10),unit_price:""};
-    if(modal.type==="addItem")return{name:"",category:"",unit:""};
+    if(modal.type==="addItem")return{name:"",category:"",unit:"",itemLoc:loc==="All"?"Both":loc};
     return{};
   });
   const[showNewV,setShowNewV]=useState(false);
@@ -285,13 +412,18 @@ function Modal({modal,setModal,data,loc,h}){
     return<MW t={`Add ${modal.itemType==="clinical"?"Clinical":"Office"} Item`} onClose={()=>setModal(null)}>
       <label style={lbl}>Item Name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{...inp,marginBottom:12}} placeholder="e.g. Bracket Removal Plier"/>
       <label style={lbl}>Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} style={{...inp,marginBottom:12}}><option value="">Select...</option>{cats.map(c=><option key={c}>{c}</option>)}</select>
-      <div style={{marginBottom:16}}><label style={lbl}>Unit</label><input value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})} style={inp} placeholder="e.g. pack/10, box/100, syringe, spool"/></div>
-      <button disabled={!form.name||!form.category||!form.unit} onClick={()=>h.addItem({name:form.name,category:form.category,type:modal.itemType,unit:form.unit,cost_per_unit:0})} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.name&&form.category&&form.unit)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.name&&form.category&&form.unit)?"pointer":"not-allowed"}}>Add Item</button>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+        <div><label style={lbl}>Unit</label><input value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})} style={inp} placeholder="e.g. pack/10, syringe"/></div>
+        <div><label style={lbl}>Location</label><select value={form.itemLoc} onChange={e=>setForm({...form,itemLoc:e.target.value})} style={inp}><option value="Both">Both Locations</option><option value="Suwanee">Suwanee Only</option><option value="Tucker">Tucker Only</option></select></div>
+      </div>
+      <button disabled={!form.name||!form.category||!form.unit} onClick={()=>h.addItem({name:form.name,category:form.category,type:modal.itemType,unit:form.unit,cost_per_unit:0},form.itemLoc)} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.name&&form.category&&form.unit)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.name&&form.category&&form.unit)?"pointer":"not-allowed"}}>Add Item</button>
     </MW>}
 
   if(modal.type==="updateStock")return<MW t="Update Stock" onClose={()=>setModal(null)}><div style={{marginBottom:12}}><div style={{fontWeight:600,marginBottom:4}}>{modal.item.name}</div><div style={{fontSize:12,color:C.textMuted}}>{modal.item.location} · Current: {modal.item.quantity} {modal.item.unit}</div></div><label style={lbl}>New Quantity</label><input type="number" defaultValue={modal.item.quantity} id="nq" style={{...inp,marginBottom:16}}/><button onClick={()=>h.updateStock(modal.item.id,modal.item.location,Math.max(0,+document.getElementById("nq").value))} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:C.accent,color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer"}}>Update</button></MW>;
 
-  if(modal.type==="markReceived")return<MW t="Mark Received" onClose={()=>setModal(null)}>{pending.length===0?<div style={{textAlign:"center",padding:20,color:C.textMuted}}>No pending orders</div>:<div style={{maxHeight:350,overflow:"auto"}}>{pending.map(o=>(<div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div><div style={{fontWeight:500,fontSize:13}}>#{o.id} — {o.item_name}</div><div style={{fontSize:11,color:C.textMuted}}>{o.location} · {o.quantity} {o.unit||""} · ${o.total_cost.toFixed(2)}</div></div><button onClick={()=>{h.markReceived(o.id);setModal(null)}} style={{padding:"5px 14px",borderRadius:6,border:"none",background:C.success,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>Receive</button></div>))}</div>}</MW>;
+  if(modal.type==="markReceived")return<MW t="Mark Received" onClose={()=>setModal(null)}>{pending.length===0?<div style={{textAlign:"center",padding:20,color:C.textMuted}}>No pending orders</div>:<div style={{maxHeight:400,overflow:"auto"}}>{pending.map(o=>(<ReceiveRow key={o.id} o={o} h={h} setModal={setModal}/>))}</div>}</MW>;
+
+  if(modal.type==="markReceivedOne"){const o=modal.order;return<MW t="Mark as Received" onClose={()=>setModal(null)}><ReceiveRow o={o} h={h} setModal={setModal} expanded/></MW>}
 
   const sel=data.items.find(i=>i.id===+form.item_id);
   const sub=sel&&form.unit_price?+(form.quantity*(+form.unit_price)).toFixed(2):0;
@@ -332,6 +464,21 @@ function Modal({modal,setModal,data,loc,h}){
       <button disabled={!form.item_id} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,unit_price:+form.unit_price||0,subtotal:sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:form.item_id?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:form.item_id?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
     </>}
   </MW>;
+}
+
+function ReceiveRow({o,h,setModal,expanded}){
+  const[rcvDate,setRcvDate]=useState(new Date().toISOString().slice(0,10));
+  const[show,setShow]=useState(!!expanded);
+  if(!show)return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div><div style={{fontWeight:500,fontSize:13}}>#{o.id} — {o.item_name}</div><div style={{fontSize:11,color:C.textMuted}}>{o.location} · {o.quantity} {o.unit||""} · ${o.total_cost.toFixed(2)} · Ordered {o.ordered_date}</div></div><button onClick={()=>setShow(true)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:C.success,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>Receive</button></div>);
+  return(<div style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+    <div style={{fontWeight:500,fontSize:13,marginBottom:8}}>#{o.id} — {o.item_name}</div>
+    <div style={{fontSize:11,color:C.textMuted,marginBottom:10}}>{o.location} · {o.quantity} {o.unit||""} · ${o.total_cost.toFixed(2)} · Ordered {o.ordered_date}</div>
+    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+      <div><label style={{...lbl,marginBottom:2}}>Date Received</label><input type="date" value={rcvDate} onChange={e=>setRcvDate(e.target.value)} style={{...inpSm,width:140}}/></div>
+      <button onClick={()=>{h.markReceived(o.id,rcvDate);setModal(null)}} style={{padding:"6px 16px",borderRadius:6,border:"none",background:C.success,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",marginTop:14}}>Confirm Received</button>
+      <button onClick={()=>setShow(false)} style={{padding:"6px 10px",borderRadius:6,border:`1px solid ${C.border}`,background:"#fff",fontSize:12,cursor:"pointer",marginTop:14}}>Cancel</button>
+    </div>
+  </div>);
 }
 
 function MW({t,onClose,children}){return<div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,animation:"fadeIn .2s"}}><div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:24,width:500,maxWidth:"95vw",maxHeight:"85vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}><h3 style={{fontSize:16,fontWeight:700}}>{t}</h3><button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,padding:4}}><Ic name="x" size={18}/></button></div>{children}</div></div>}
