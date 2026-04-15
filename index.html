@@ -561,9 +561,9 @@ function Modal({modal,setModal,data,loc,h}){
     const lo=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;
     const lastUP=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
     const lv=lo?data.vendors.find(v=>v.id===lo.vendor_id)?.name:null;
-    let moUsage=null,newDur=null;
-    if(lo){const ds=daysAgo(lo.received_date||lo.ordered_date);const ms=+(ds/30).toFixed(1);if(ms>0&&lo.quantity>0){moUsage=+(lo.quantity/ms).toFixed(1);if(ln.quantity>0&&moUsage>0)newDur=+(ln.quantity/moUsage).toFixed(1)}}
-    return{sel,eUP,sub:+sub,lo,lastUP,lv,moUsage,newDur};
+    let moUsage=null,newDur=null,lastDurMo=null;
+    if(lo){const ds=daysAgo(lo.received_date||lo.ordered_date);const ms=+(ds/30).toFixed(1);if(ms>0&&lo.quantity>0){moUsage=+(lo.quantity/ms).toFixed(1);lastDurMo=ms;if(ln.quantity>0&&moUsage>0)newDur=+(ln.quantity/moUsage).toFixed(1)}}
+    return{sel,eUP,sub:+sub,lo,lastUP,lv,moUsage,newDur,lastDurMo};
   });
   const itemsSubtotal=lineCalcs.reduce((s,c)=>s+c.sub,0);
   const grandTotal=+(itemsSubtotal+(+form.tax||0)+(+form.shipping||0)-(+form.discount||0)).toFixed(2);
@@ -589,9 +589,28 @@ function Modal({modal,setModal,data,loc,h}){
           </div>
           <select value={ln.item_id} onChange={e=>{const nid=e.target.value;const ns=data.items.find(i=>i.id===+nid);const nlo=ns?data.orders.filter(o=>o.item_id===ns.id&&o.location===form.location&&o.status==="received").sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const nup=nlo&&nlo.quantity>0?+(nlo.subtotal/nlo.quantity).toFixed(2):"";const nsub=nup&&ln.quantity?+(ln.quantity*nup).toFixed(2):"";updateLine(idx,"item_id",nid);updateLine(idx,"unit_price",nup);updateLine(idx,"subtotal_input",nsub);updateLine(idx,"price_mode",nup?"unit":"")}} style={{...inp,marginBottom:6}}><option value="">Select item...</option>{[...data.items].sort((a,b)=>a.name.localeCompare(b.name)).map(i=>(<option key={i.id} value={i.id}>{i.name} ({i.category})</option>))}</select>
 
-          {/* Last order context */}
-          {lo&&<div style={{padding:8,background:"#FFF7ED",borderRadius:6,fontSize:10,color:"#92400E",marginBottom:8}}>
-            Last: {lo.ordered_date} ({fmtDur(daysAgo(lo.ordered_date))} ago) · {lo.quantity} {sel?.unit} · ${lo.total_cost.toFixed(2)} · ${c.lastUP}/ea{c.lv&&` · ${c.lv}`}{c.moUsage&&` · ~${Math.round(c.moUsage)}/mo`}
+          {/* Smart Context Panel */}
+          {lo&&<div style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:8,overflow:"hidden"}}>
+            <div style={{padding:"8px 12px",background:"#FFF7ED",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#92400E",marginBottom:4}}>LAST ORDER ({lo.ordered_date}){c.lv&&` · ${c.lv}`}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}>
+                <div><span style={{color:C.textMuted}}>Qty:</span> <strong>{lo.quantity}</strong> {sel?.unit}</div>
+                <div><span style={{color:C.textMuted}}>Total:</span> <strong>${lo.total_cost.toFixed(2)}</strong></div>
+                <div><span style={{color:C.textMuted}}>Per {sel?.unit}:</span> <strong>${c.lastUP}</strong></div>
+              </div>
+            </div>
+            {c.moUsage&&<div style={{padding:"8px 12px",background:"#EFF6FF",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.blue,marginBottom:4}}>USAGE</div>
+              <div style={{fontSize:11}}>{lo.quantity} {sel?.unit} in {fmtDur(Math.round(c.lastDurMo*30))} ({lo.ordered_date} → now) · <strong>~{c.moUsage} {sel?.unit}/month</strong></div>
+            </div>}
+            {c.newDur&&c.sub>0&&<div style={{padding:"8px 12px",background:C.accentLight}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.accentDark,marginBottom:4}}>THIS ORDER → PROJECTION</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}>
+                <div><span style={{color:C.textMuted}}>Qty:</span> <strong>{ln.quantity}</strong> {sel?.unit}</div>
+                <div><span style={{color:C.textMuted}}>Per {sel?.unit}:</span> <strong>${c.eUP>0?c.eUP.toFixed?c.eUP.toFixed(2):c.eUP:"—"}</strong>{c.lastUP&&c.eUP>0&&c.eUP!==c.lastUP&&<span style={{fontSize:9,marginLeft:3,color:c.eUP<c.lastUP?C.success:C.danger}}>({c.eUP<c.lastUP?"↓":"↑"}${Math.abs(c.eUP-c.lastUP).toFixed(2)})</span>}</div>
+                <div><span style={{color:C.textMuted}}>Will last:</span> <strong style={{color:C.accent}}>~{fmtDur(Math.round(c.newDur*30))}</strong></div>
+              </div>
+            </div>}
           </div>}
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
@@ -599,8 +618,6 @@ function Modal({modal,setModal,data,loc,h}){
             <div><label style={{...lbl,fontSize:10}}>Unit Price ($){ln.price_mode==="subtotal"&&c.eUP>0&&<span style={{color:C.accent}}> =${c.eUP}</span>}</label><input type="number" step=".01" value={ln.price_mode==="subtotal"?"":ln.unit_price} onChange={e=>{const up=e.target.value;updateLine(idx,"unit_price",up);updateLine(idx,"subtotal_input",up&&ln.quantity?+(ln.quantity*(+up)).toFixed(2):"");updateLine(idx,"price_mode","unit")}} style={{...inp,background:ln.price_mode==="subtotal"?"#F1F5F9":"#fff"}} placeholder={c.lastUP?`Last $${c.lastUP}`:""}/></div>
             <div><label style={{...lbl,fontSize:10}}>or Subtotal ($){ln.price_mode==="unit"&&c.sub>0&&<span style={{color:C.accent}}> =${c.sub.toFixed(2)}</span>}</label><input type="number" step=".01" value={ln.price_mode==="unit"?"":ln.subtotal_input} onChange={e=>{const st=e.target.value;updateLine(idx,"subtotal_input",st);updateLine(idx,"unit_price",st&&ln.quantity>0?+(+st/ln.quantity).toFixed(2):"");updateLine(idx,"price_mode","subtotal")}} style={{...inp,background:ln.price_mode==="unit"?"#F1F5F9":"#fff"}} placeholder="Before tax"/></div>
           </div>
-          {/* Projection */}
-          {c.newDur&&c.sub>0&&<div style={{fontSize:10,color:C.accent,marginTop:4,fontWeight:600}}>→ {ln.quantity} {sel?.unit} will last ~{fmtDur(Math.round(c.newDur*30))}{c.lastUP&&c.eUP>0&&c.eUP!==c.lastUP&&<span style={{color:c.eUP<c.lastUP?C.success:C.danger,marginLeft:6}}>({c.eUP<c.lastUP?"↓":"↑"} ${Math.abs(c.eUP-c.lastUP).toFixed(2)}/ea)</span>}</div>}
         </div>);
       })}
       <button onClick={addLine} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${C.accent}`,background:"transparent",color:C.accent,fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:14}}><Ic name="plus" size={14} color={C.accent}/> Add Another Item</button>
