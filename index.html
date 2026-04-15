@@ -272,7 +272,7 @@ function SettingsPage({eCSV,eJSON,iJSON,clearAll,data,h}){
 
 function Modal({modal,setModal,data,loc,h}){
   const[form,setForm]=useState(()=>{
-    if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:""};
+    if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:"",ordered_date:new Date().toISOString().slice(0,10)};
     if(modal.type==="addItem")return{name:"",category:"",unit:"",cost_per_unit:0};
     return{};
   });
@@ -305,9 +305,10 @@ function Modal({modal,setModal,data,loc,h}){
       {lo&&<div style={{padding:10,background:"#FFF7ED",borderRadius:8,fontSize:11,color:"#92400E",marginBottom:12,marginTop:4}}><strong>Last:</strong> {lo.ordered_date} ({daysAgo(lo.ordered_date)}d ago) · {lo.quantity} {lo.unit||""} · ${lo.total_cost.toFixed(2)}{lv&&` · ${lv}`}</div>}
       {sel&&!lo&&<div style={{fontSize:11,color:C.textMuted,marginBottom:12,marginTop:4,fontStyle:"italic"}}>No previous orders at {form.location}</div>}
       {!sel&&<div style={{marginBottom:8}}/>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div><label style={lbl}>Quantity {sel&&<span style={{fontWeight:400,color:C.accent}}>({sel.unit})</span>}</label><div style={{display:"flex",alignItems:"center",gap:6}}><input type="number" value={form.quantity} min={1} onChange={e=>setForm({...form,quantity:Math.max(1,+e.target.value)})} style={{...inp,flex:1}}/>{sel&&<span style={{fontSize:12,color:C.textMuted}}>{sel.unit}</span>}</div></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+        <div><label style={lbl}>Quantity {sel&&<span style={{fontWeight:400,color:C.accent}}>({sel.unit})</span>}</label><div style={{display:"flex",alignItems:"center",gap:6}}><input type="number" value={form.quantity} min={1} onChange={e=>setForm({...form,quantity:Math.max(1,+e.target.value)})} style={{...inp,flex:1}}/></div></div>
         <div><label style={lbl}>Location</label><select value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={inp}><option>Suwanee</option><option>Tucker</option></select></div>
+        <div><label style={lbl}>Order Date</label><input type="date" value={form.ordered_date} onChange={e=>setForm({...form,ordered_date:e.target.value})} style={inp}/></div>
       </div>
       <label style={lbl}>Purchased From</label>
       {showNewV?<div style={{display:"flex",gap:6,marginBottom:12}}><input value={form.newVendor} onChange={e=>setForm({...form,newVendor:e.target.value})} placeholder="New vendor..." style={{...inp,flex:1}}/><button onClick={()=>{if(form.newVendor.trim()){const vid=h.addVendor(form.newVendor.trim());setForm(f=>({...f,vendor_id:String(vid),newVendor:""}));setShowNewV(false)}}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:C.accent,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>Add</button><button onClick={()=>setShowNewV(false)} style={{padding:"8px",borderRadius:8,border:`1px solid ${C.border}`,background:"#fff",cursor:"pointer"}}><Ic name="x" size={14}/></button></div>:
@@ -325,7 +326,7 @@ function Modal({modal,setModal,data,loc,h}){
         {+form.discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4,color:C.success}}><span>Discount</span><span>-${(+form.discount).toFixed(2)}</span></div>}
         <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:6}}><span style={{fontWeight:700,fontSize:14}}>Total</span><span style={{fontWeight:700,fontSize:14,color:C.accent}}>${tot.toFixed(2)}</span></div>
       </div>}
-      <button disabled={!form.item_id} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,subtotal:sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:new Date().toISOString().slice(0,10),notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:form.item_id?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:form.item_id?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
+      <button disabled={!form.item_id} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,subtotal:sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:form.item_id?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:form.item_id?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
     </>}
   </MW>;
 }
