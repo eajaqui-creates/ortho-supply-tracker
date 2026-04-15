@@ -400,7 +400,7 @@ function SettingsPage({eCSV,eJSON,iJSON,clearAll,data,h}){
 
 function Modal({modal,setModal,data,loc,h}){
   const[form,setForm]=useState(()=>{
-    if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:"",ordered_date:new Date().toISOString().slice(0,10),unit_price:""};
+    if(modal.type==="logOrder")return{item_id:"",quantity:1,location:loc==="All"?"Suwanee":loc,notes:"",tax:0,shipping:0,discount:0,vendor_id:"",newVendor:"",ordered_date:new Date().toISOString().slice(0,10),unit_price:"",subtotal_input:"",price_mode:""};
     if(modal.type==="addItem")return{name:"",category:"",unit:"",itemLoc:loc==="All"?"Both":loc};
     return{};
   });
@@ -426,8 +426,10 @@ function Modal({modal,setModal,data,loc,h}){
   if(modal.type==="markReceivedOne"){const o=modal.order;return<MW t="Mark as Received" onClose={()=>setModal(null)}><ReceiveRow o={o} h={h} setModal={setModal} expanded/></MW>}
 
   const sel=data.items.find(i=>i.id===+form.item_id);
-  const sub=sel&&form.unit_price?+(form.quantity*(+form.unit_price)).toFixed(2):0;
-  const tot=+(sub+(+form.tax||0)+(+form.shipping||0)-(+form.discount||0)).toFixed(2);
+  // Sync: if user typed subtotal, calc unit price. If user typed unit price, calc subtotal.
+  const effectiveUP=form.price_mode==="subtotal"&&form.quantity>0?+(+form.subtotal_input/form.quantity).toFixed(2):(+form.unit_price||0);
+  const sub=form.price_mode==="subtotal"?(+form.subtotal_input||0):sel?+(form.quantity*effectiveUP).toFixed(2):0;
+  const tot=+(+sub+(+form.tax||0)+(+form.shipping||0)-(+form.discount||0)).toFixed(2);
   const lo=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===form.location).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;
   const lv=lo?data.vendors.find(v=>v.id===lo.vendor_id)?.name:null;
   const lastUP=lo&&lo.quantity>0?+(lo.subtotal/lo.quantity).toFixed(2):null;
@@ -435,14 +437,20 @@ function Modal({modal,setModal,data,loc,h}){
   return<MW t="Log New Order" onClose={()=>setModal(null)}>
     {data.items.length===0?<div style={{textAlign:"center",padding:20,color:C.textMuted}}>Add items in Clinical or Office Supplies first.</div>:<>
       <label style={lbl}>Item</label>
-      <select value={form.item_id} onChange={e=>{const newId=e.target.value;const newSel=data.items.find(i=>i.id===+newId);const newLo=newSel?data.orders.filter(o=>o.item_id===newSel.id&&o.location===form.location).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP=newLo&&newLo.quantity>0?+(newLo.subtotal/newLo.quantity).toFixed(2):"";setForm({...form,item_id:newId,unit_price:newUP})}} style={{...inp,marginBottom:4}}><option value="">Select...</option>{[...data.items].sort((a,b)=>a.name.localeCompare(b.name)).map(i=>(<option key={i.id} value={i.id}>{i.name} ({i.category})</option>))}</select>
+      <select value={form.item_id} onChange={e=>{const newId=e.target.value;const newSel=data.items.find(i=>i.id===+newId);const newLo=newSel?data.orders.filter(o=>o.item_id===newSel.id&&o.location===form.location).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP=newLo&&newLo.quantity>0?+(newLo.subtotal/newLo.quantity).toFixed(2):"";const newSub=newUP&&form.quantity?+(form.quantity*newUP).toFixed(2):"";setForm({...form,item_id:newId,unit_price:newUP,subtotal_input:newSub,price_mode:newUP?"unit":""})}} style={{...inp,marginBottom:4}}><option value="">Select...</option>{[...data.items].sort((a,b)=>a.name.localeCompare(b.name)).map(i=>(<option key={i.id} value={i.id}>{i.name} ({i.category})</option>))}</select>
       {lo&&<div style={{padding:10,background:"#FFF7ED",borderRadius:8,fontSize:11,color:"#92400E",marginBottom:12,marginTop:4}}><strong>Last:</strong> {lo.ordered_date} ({daysAgo(lo.ordered_date)}d ago) · {lo.quantity} {lo.unit||""} · ${lo.total_cost.toFixed(2)} · ${lastUP}/ea{lv&&` · ${lv}`}</div>}
       {sel&&!lo&&<div style={{fontSize:11,color:C.textMuted,marginBottom:12,marginTop:4,fontStyle:"italic"}}>No previous orders at {form.location}</div>}
       {!sel&&<div style={{marginBottom:8}}/>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:12}}>
-        <div><label style={lbl}>Qty {sel&&<span style={{fontWeight:400,color:C.accent}}>({sel.unit})</span>}</label><input type="number" value={form.quantity} min={1} onChange={e=>setForm({...form,quantity:Math.max(1,+e.target.value)})} style={inp}/></div>
-        <div><label style={lbl}>Unit Price ($)</label><input type="number" step=".01" value={form.unit_price} onChange={e=>setForm({...form,unit_price:e.target.value})} style={inp} placeholder={lastUP?`Last: $${lastUP}`:"0.00"}/></div>
-        <div><label style={lbl}>Location</label><select value={form.location} onChange={e=>{const newLo2=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===e.target.value).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP2=newLo2&&newLo2.quantity>0?+(newLo2.subtotal/newLo2.quantity).toFixed(2):"";setForm({...form,location:e.target.value,unit_price:newUP2||form.unit_price})}} style={inp}><option>Suwanee</option><option>Tucker</option></select></div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8}}>
+        <div><label style={lbl}>Qty {sel&&<span style={{fontWeight:400,color:C.accent}}>({sel.unit})</span>}</label><input type="number" value={form.quantity} min={1} onChange={e=>{const q=Math.max(1,+e.target.value);if(form.price_mode==="subtotal"&&form.subtotal_input){setForm({...form,quantity:q,unit_price:q>0?+(+form.subtotal_input/q).toFixed(2):""})}else if(form.unit_price){setForm({...form,quantity:q,subtotal_input:+(q*(+form.unit_price)).toFixed(2)})}else{setForm({...form,quantity:q})}}} style={inp}/></div>
+        <div><label style={lbl}>Unit Price ($) {form.price_mode==="subtotal"&&effectiveUP>0&&<span style={{fontWeight:400,color:C.accent}}>= ${effectiveUP}</span>}</label><input type="number" step=".01" value={form.price_mode==="subtotal"?"":form.unit_price} onChange={e=>{const up=e.target.value;const st=up&&form.quantity?+(form.quantity*(+up)).toFixed(2):"";setForm({...form,unit_price:up,subtotal_input:st,price_mode:"unit"})}} style={{...inp,background:form.price_mode==="subtotal"?"#F1F5F9":"#fff"}} placeholder={lastUP?`Last: $${lastUP}`:"0.00"}/></div>
+        <div><label style={lbl}>or Subtotal ($) {form.price_mode==="unit"&&+sub>0&&<span style={{fontWeight:400,color:C.accent}}>= ${(+sub).toFixed(2)}</span>}</label><input type="number" step=".01" value={form.price_mode==="unit"?"":form.subtotal_input} onChange={e=>{const st=e.target.value;const up=st&&form.quantity>0?+(+st/form.quantity).toFixed(2):"";setForm({...form,subtotal_input:st,unit_price:up,price_mode:"subtotal"})}} style={{...inp,background:form.price_mode==="unit"?"#F1F5F9":"#fff"}} placeholder="Total before tax"/></div>
+      </div>
+      <div style={{fontSize:10,color:C.textMuted,marginBottom:12,fontStyle:"italic"}}>Fill either Unit Price or Subtotal — the other calculates automatically</div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div><label style={lbl}>Location</label><select value={form.location} onChange={e=>{const newLo2=sel?data.orders.filter(o=>o.item_id===sel.id&&o.location===e.target.value).sort((a,b)=>b.ordered_date.localeCompare(a.ordered_date))[0]:null;const newUP2=newLo2&&newLo2.quantity>0?+(newLo2.subtotal/newLo2.quantity).toFixed(2):"";setForm({...form,location:e.target.value,unit_price:newUP2||form.unit_price,subtotal_input:newUP2&&form.quantity?+(form.quantity*newUP2).toFixed(2):form.subtotal_input,price_mode:newUP2?"unit":form.price_mode})}} style={inp}><option>Suwanee</option><option>Tucker</option></select></div>
         <div><label style={lbl}>Order Date</label><input type="date" value={form.ordered_date} onChange={e=>setForm({...form,ordered_date:e.target.value})} style={inp}/></div>
       </div>
       <label style={lbl}>Purchased From</label>
@@ -453,15 +461,15 @@ function Modal({modal,setModal,data,loc,h}){
         <div><label style={lbl}>Shipping ($)</label><input type="number" step=".01" value={form.shipping} onChange={e=>setForm({...form,shipping:e.target.value})} style={inp}/></div>
         <div><label style={lbl}>Discount ($)</label><input type="number" step=".01" value={form.discount} onChange={e=>setForm({...form,discount:e.target.value})} style={inp}/></div>
       </div>
-      <label style={lbl}>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={{...inp,marginBottom:16}} placeholder="PO number, urgency..."/>
-      {sel&&+form.unit_price>0&&<div style={{padding:14,background:"#F1F5F9",borderRadius:10,fontSize:12,marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Subtotal ({form.quantity} × ${(+form.unit_price).toFixed(2)}/{sel.unit})</span><span style={{fontWeight:600}}>${sub.toFixed(2)}</span></div>
+      <label style={lbl}>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} style={{...inp,marginBottom:16}} placeholder="Item#, PO number, details..."/>
+      {sel&&+sub>0&&<div style={{padding:14,background:"#F1F5F9",borderRadius:10,fontSize:12,marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Subtotal ({form.quantity} × ${effectiveUP.toFixed?effectiveUP.toFixed(2):effectiveUP}/{sel.unit})</span><span style={{fontWeight:600}}>${(+sub).toFixed(2)}</span></div>
         {+form.tax>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Tax</span><span>${(+form.tax).toFixed(2)}</span></div>}
         {+form.shipping>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span>Shipping</span><span>${(+form.shipping).toFixed(2)}</span></div>}
         {+form.discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4,color:C.success}}><span>Discount</span><span>-${(+form.discount).toFixed(2)}</span></div>}
         <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:6}}><span style={{fontWeight:700,fontSize:14}}>Total</span><span style={{fontWeight:700,fontSize:14,color:C.accent}}>${tot.toFixed(2)}</span></div>
       </div>}
-      <button disabled={!form.item_id} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,unit_price:+form.unit_price||0,subtotal:sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:form.item_id?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:form.item_id?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
+      <button disabled={!form.item_id||+sub<=0} onClick={()=>{if(!sel)return;h.logOrder({item_id:sel.id,item_name:sel.name,category:sel.category,type:sel.type,unit:sel.unit,location:form.location,quantity:+form.quantity,unit_price:+effectiveUP||0,subtotal:+sub,tax:+form.tax||0,shipping:+form.shipping||0,discount:+form.discount||0,total_cost:tot,vendor_id:form.vendor_id?+form.vendor_id:null,ordered_date:form.ordered_date,notes:form.notes})}} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:(form.item_id&&+sub>0)?C.accent:"#CBD5E1",color:"#fff",fontSize:14,fontWeight:600,cursor:(form.item_id&&+sub>0)?"pointer":"not-allowed"}}>Log Order — ${tot.toFixed(2)}</button>
     </>}
   </MW>;
 }
